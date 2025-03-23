@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hiểu Kinh Tế Việt Nam Qua Dữ Liệu</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <!-- D3.js library -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+    <header>
+        <h1>🇻🇳 Hiểu Biết Kinh Tế Việt Nam Qua Dữ Liệu</h1>
+        <p>Khám phá xu hướng giá cả và các yếu tố ảnh hưởng từ 2000-2025 thông qua biểu đồ trực quan.</p>
+    </header>
+
+    <main>
+        <div class="container">
+            <div class="sidebar">
+                <div class="panel" id="data-selection">
+                    <h2>Chọn chỉ số kinh tế</h2>
+                    <!-- Indicator checkboxes will be added here dynamically -->
+                </div>
+                
+                <div class="panel" id="chart-selection">
+                    <h2>Chọn loại biểu đồ</h2>
+                    <!-- Chart types will be added here dynamically -->
+                </div>
+                
+                <div class="panel" id="data-info">
+                    <h2>Thông tin dữ liệu</h2>
+                    <div id="selected-data-info"></div>
+                </div>
+            </div>
+            
+            <div class="content">
+                <div class="panel" id="visualization">
+                    <h2 id="chart-title">Biểu đồ trực quan hóa</h2>
+                    <!-- SVG will be added here dynamically -->
+                </div>
+                
+                <div class="panel" id="explanation">
+                    <h2>Giải thích</h2>
+                    <div id="explanation-content"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div class="tooltip" id="tooltip"></div>
+
+    <footer>
+        <p>Dữ liệu kinh tế Việt Nam từ 2000-2025 | Cập nhật: 11/2023</p>
+        <p>Ứng dụng phân tích dữ liệu kinh tế này giúp người không chuyên hiểu được các chỉ số kinh tế và mối quan hệ giữa chúng.</p>
+    </footer>
+
+    <!-- Custom Scripts -->
+    <script src="js/data.js"></script>
+    <script src="js/charts.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

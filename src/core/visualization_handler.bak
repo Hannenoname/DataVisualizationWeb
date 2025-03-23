@@ -1,0 +1,2514 @@
+import plotly.graph_objects as go
+import plotly.express as px
+import pandas as pd
+import numpy as np
+from .data_handler import data_handler
+import scipy.stats as stats
+from plotly.subplots import make_subplots
+from datetime import datetime, timedelta
+
+class VisualizationHandler:
+    def __init__(self):
+        """Initialize visualization handler"""
+        self.data_handler = None
+        from core.data_handler import data_handler
+        self.data_handler = data_handler
+        
+        # Cập nhật bảng màu hiện đại và hài hòa
+        self.color_scheme = {
+            'Core_Inflation': '#3b82f6',  # Blue
+            'Food_Inflation': '#f97316',  # Orange
+            'USD_VND': '#16a34a',         # Green
+            'Brent': '#ef4444',           # Red
+            'Export': '#8b5cf6',          # Purple
+            'Import': '#ec4899',          # Pink
+            'VN_Trade_Balance': '#0ea5e9', # Light Blue
+            'Gold': '#f59e0b',            # Amber
+            'VN_Gasoline_Prices': '#dc2626', # Dark Red
+            'VN_Interest_Rate': '#0891b2', # Cyan
+            'Industrial_products': '#6366f1', # Indigo
+            'MonthlyCPI': '#d946ef',      # Fuchsia
+            'Unemployment Rate': '#84cc16', # Lime
+            'VN_money_supply': '#0d9488',  # Teal
+            'VN_rice_price': '#ca8a04',    # Yellow
+            'VN_fiscal_deficit': '#9333ea', # Purple
+            'China_CPI': '#7c3aed',        # Violet
+            'Agriculture, Forestry and Fishing': '#65a30d', # Green
+            'VN_coffee,tea,mate,spices': '#b45309', # Amber
+        }
+        
+        # Danh sách màu dự phòng cho các chỉ số không được định nghĩa
+        self.fallback_colors = [
+            '#3b82f6', '#f97316', '#16a34a', '#ef4444', '#8b5cf6', 
+            '#ec4899', '#0ea5e9', '#f59e0b', '#dc2626', '#0891b2',
+            '#6366f1', '#d946ef', '#84cc16', '#0d9488', '#ca8a04'
+        ]
+        
+        # Kiểu hiển thị hover
+        self.hover_style = dict(
+            bgcolor="rgba(255, 255, 255, 0.95)",
+            font_size=12,
+            font_family="Poppins, sans-serif",
+            bordercolor="#e2e8f0"
+        )
+        
+        # Định nghĩa tên tiếng Việt cho các chỉ số
+        self.indicator_names = {
+            'Core_Inlation': 'Lạm phát cơ bản',
+            'Core_Inflation': 'Lạm phát cơ bản',
+            'Food_Inflation': 'Lạm phát thực phẩm',
+            'USD_VND': 'Tỷ giá USD/VND',
+            'Brent': 'Giá dầu Brent',
+            'Export': 'Kim ngạch xuất khẩu',
+            'Import': 'Kim ngạch nhập khẩu',
+            'VN_Trade_Balance': 'Cán cân thương mại',
+            'Gold': 'Giá vàng',
+            'VN_Gasoline_Prices': 'Giá xăng dầu',
+            'VN_Interest_Rate': 'Lãi suất',
+            'Industrial_products': 'Sản xuất công nghiệp',
+            'MonthlyCPI': 'CPI hàng tháng',
+            'Unemployment Rate': 'Tỷ lệ thất nghiệp',
+            'VN_money_supply': 'Cung tiền M2',
+            'VN_rice_price': 'Giá gạo',
+            'China_CPI': 'CPI Trung Quốc',
+            'VN_fiscal_deficit': 'Thâm hụt ngân sách',
+            'Agriculture, Forestry and Fishing': 'Nông lâm ngư nghiệp',
+            'VN_coffee,tea,mate,spices': 'Cà phê, chè, hương liệu'
+        }
+        
+        # Định nghĩa các giải thích cho từng mức giá trị
+        self.indicator_interpretations = {
+            'Core_Inlation': {
+                'low': 'Áp lực lạm phát thấp, có thể cần kích thích kinh tế',
+                'medium': 'Lạm phát ở mức hợp lý, kinh tế ổn định',
+                'high': 'Áp lực lạm phát cao, cần chính sách thắt chặt'
+            },
+            'Core_Inflation': {
+                'low': 'Áp lực lạm phát thấp, có thể cần kích thích kinh tế',
+                'medium': 'Lạm phát ở mức hợp lý, kinh tế ổn định',
+                'high': 'Áp lực lạm phát cao, cần chính sách thắt chặt'
+            },
+            'Food_Inflation': {
+                'low': 'Giá thực phẩm ổn định, có lợi cho người tiêu dùng',
+                'medium': 'Giá thực phẩm tăng vừa phải',
+                'high': 'Giá thực phẩm tăng cao, ảnh hưởng đến chi tiêu hộ gia đình'
+            },
+            'USD_VND': {
+                'low': 'VND tăng giá, có lợi cho nhập khẩu và đi du lịch nước ngoài',
+                'medium': 'Tỷ giá ổn định, thuận lợi cho kế hoạch kinh doanh',
+                'high': 'VND mất giá, có lợi cho xuất khẩu nhưng bất lợi cho nhập khẩu'
+            },
+            'Brent': {
+                'low': 'Giá dầu thấp, giảm chi phí sản xuất và vận tải',
+                'medium': 'Giá dầu ở mức cân bằng',
+                'high': 'Giá dầu cao, tăng chi phí sản xuất và vận tải'
+            },
+        }
+        
+        # Thêm các interpretation mặc định cho các chỉ số còn lại
+        for indicator in self.indicator_names:
+            if indicator not in self.indicator_interpretations:
+                self.indicator_interpretations[indicator] = {
+                    'low': 'Giá trị thấp hơn mức trung bình lịch sử',
+                    'medium': 'Giá trị nằm trong khoảng trung bình lịch sử',
+                    'high': 'Giá trị cao hơn mức trung bình lịch sử'
+                }
+        
+        # Thêm các annotation lịch sử quan trọng
+        self.historical_annotations = {
+            '2007-01': {
+                'event': 'Gia nhập WTO',
+                'impact': 'Tăng trưởng xuất khẩu và đầu tư nước ngoài',
+                'context': 'Việt Nam chính thức gia nhập Tổ chức Thương mại Thế giới'
+            },
+            '2008-06': {
+                'event': 'Khủng hoảng tài chính toàn cầu',
+                'impact': 'Tăng lạm phát, giảm tăng trưởng',
+                'context': 'Khủng hoảng bùng nổ từ Mỹ và lan rộng toàn cầu'
+            },
+            '2011-02': {
+                'event': 'Thắt chặt chính sách tiền tệ',
+                'impact': 'Lãi suất tăng cao, tín dụng giảm',
+                'context': 'Ngân hàng Nhà nước tăng lãi suất để kiểm soát lạm phát'
+            },
+            '2015-08': {
+                'event': 'Phá giá đồng Nhân dân tệ',
+                'impact': 'Tỷ giá USD/VND tăng mạnh',
+                'context': 'Trung Quốc phá giá đồng tiền gây áp lực lên thị trường tiền tệ khu vực'
+            },
+            '2018-01': {
+                'event': 'Chiến tranh thương mại Mỹ-Trung',
+                'impact': 'Xuất khẩu tăng do dịch chuyển chuỗi cung ứng',
+                'context': 'Mỹ áp thuế lên hàng hóa Trung Quốc, cơ hội cho hàng Việt'
+            },
+            '2020-01': {
+                'event': 'Đại dịch COVID-19',
+                'impact': 'Gián đoạn chuỗi cung ứng, tiêu dùng giảm mạnh',
+                'context': 'Đại dịch bùng phát từ Trung Quốc và lan rộng toàn cầu'
+            },
+            '2022-02': {
+                'event': 'Xung đột Nga-Ukraine',
+                'impact': 'Giá năng lượng và lương thực tăng mạnh',
+                'context': 'Xung đột tác động đến chuỗi cung ứng toàn cầu'
+            },
+            '2023-03': {
+                'event': 'Khủng hoảng ngân hàng Mỹ',
+                'impact': 'Biến động thị trường tài chính, FED tăng lãi suất',
+                'context': 'Silicon Valley Bank và Signature Bank sụp đổ'
+            }
+        }
+
+    def get_value_interpretation(self, indicator, value):
+        """Get interpretation for a value based on its percentile"""
+        if indicator not in self.indicator_interpretations:
+            return "Không có thông tin diễn giải"
+            
+        interpretations = self.indicator_interpretations[indicator]
+        if value <= 0.33:
+            return interpretations["low"]
+        elif value <= 0.66:
+            return interpretations["medium"]
+        else:
+            return interpretations["high"]
+
+    def get_hover_template(self, date_str, indicator, value):
+        """Get hover template with detailed information"""
+        explanation = self.get_indicator_explanation(indicator)
+        
+        # Xác định mức độ dựa trên ngưỡng
+        thresholds = explanation.get('threshold', {})
+        level = None
+        comment = "Không xác định"
+        
+        if thresholds:
+            high_text = thresholds.get('high', '')
+            medium_text = thresholds.get('medium', '')
+            low_text = thresholds.get('low', '')
+            
+            # Trích xuất ngưỡng từ văn bản
+            try:
+                # Xử lý ngưỡng cao
+                high_threshold = None
+                if high_text and ">" in high_text:
+                    high_match = high_text.split('>')[1].split(':')[0].strip()
+                    high_value = float(high_match.replace('%', '').replace('GDP', '').strip())
+                    high_threshold = high_value
+                
+                # Xử lý ngưỡng trung bình
+                medium_threshold_low, medium_threshold_high = None, None
+                if medium_text and "-" in medium_text:
+                    medium_parts = medium_text.split('-')
+                    medium_low = float(medium_parts[0].replace('%', '').replace('GDP', '').strip())
+                    medium_high_text = medium_parts[1].split(':')[0].strip()
+                    medium_high = float(medium_high_text.replace('%', '').replace('GDP', '').strip())
+                    medium_threshold_low, medium_threshold_high = medium_low, medium_high
+                
+                # Xử lý ngưỡng thấp
+                low_threshold = None
+                if low_text and "<" in low_text:
+                    low_match = low_text.split('<')[1].split(':')[0].strip()
+                    low_value = float(low_match.replace('%', '').replace('GDP', '').strip())
+                    low_threshold = low_value
+                
+                # Xác định mức độ dựa trên ngưỡng
+                if isinstance(value, (int, float)):
+                    if high_threshold is not None and value > high_threshold:
+                        level = 'high'
+                        comment = high_text.split(':')[1].strip() if ':' in high_text else "Giá trị cao"
+                    elif low_threshold is not None and value < low_threshold:
+                        level = 'low'
+                        comment = low_text.split(':')[1].strip() if ':' in low_text else "Giá trị thấp"
+                    elif medium_threshold_low is not None and medium_threshold_high is not None and medium_threshold_low <= value <= medium_threshold_high:
+                        level = 'medium'
+                        comment = medium_text.split(':')[1].strip() if ':' in medium_text else "Giá trị trung bình"
+                    else:
+                        # Sử dụng phân loại mặc định nếu không xác định được ngưỡng
+                        if indicator in ['Core_Inflation', 'Food_Inflation', 'Core_Inlation']:
+                            if value > 2: 
+                                level = 'high'
+                                comment = "Lạm phát cao, cần theo dõi"
+                            elif value > 1: 
+                                level = 'medium'
+                                comment = "Lạm phát ổn định"
+                            else: 
+                                level = 'low'
+                                comment = "Lạm phát thấp"
+                        elif indicator == 'USD_VND':
+                            if value > 23500: 
+                                level = 'high'
+                                comment = "VND mất giá mạnh so với USD"
+                            elif value > 22500: 
+                                level = 'medium'
+                                comment = "Tỷ giá ở mức bình thường"
+                            else: 
+                                level = 'low'
+                                comment = "VND tăng giá so với USD"
+            except:
+                # Sử dụng cách phân loại đơn giản hơn nếu có lỗi
+                if isinstance(value, (int, float)):
+                    if indicator in ['Core_Inflation', 'Food_Inflation', 'Core_Inlation']:
+                        if value > 2: 
+                            level = 'high'
+                            comment = "Lạm phát cao, cần theo dõi"
+                        elif value > 1: 
+                            level = 'medium'
+                            comment = "Lạm phát ổn định"
+                        else: 
+                            level = 'low'
+                            comment = "Lạm phát thấp"
+                    elif indicator == 'USD_VND':
+                        if value > 23500: 
+                            level = 'high'
+                            comment = "VND mất giá mạnh so với USD"
+                        elif value > 22500: 
+                            level = 'medium'
+                            comment = "Tỷ giá ở mức bình thường"
+                        else: 
+                            level = 'low'
+                            comment = "VND tăng giá so với USD"
+                    elif indicator == 'Brent':
+                        if value > 80: 
+                            level = 'high'
+                            comment = "Giá dầu cao, tăng chi phí sản xuất"
+                        elif value > 50: 
+                            level = 'medium'
+                            comment = "Giá dầu ở mức cân bằng"
+                        else: 
+                            level = 'low'
+                            comment = "Giá dầu thấp, có lợi cho nhập khẩu"
+                    elif indicator in ['Export', 'Import']:
+                        if value > 10: 
+                            level = 'high'
+                            comment = "Tăng trưởng mạnh"
+                        elif value > 5: 
+                            level = 'medium'
+                            comment = "Tăng trưởng ổn định"
+                        else: 
+                            level = 'low'
+                            comment = "Tăng trưởng chậm"
+                    elif indicator == 'VN_Trade_Balance':
+                        if value > 1: 
+                            level = 'high'
+                            comment = "Thặng dư thương mại lớn"
+                        elif value > -1: 
+                            level = 'medium'
+                            comment = "Cán cân thương mại cân bằng"
+                        else: 
+                            level = 'low'
+                            comment = "Thâm hụt thương mại lớn"
+                    elif indicator == 'Gold':
+                        if value > 1800: 
+                            level = 'high'
+                            comment = "Giá vàng cao, dòng tiền đang tìm nơi trú ẩn an toàn"
+                        elif value > 1500: 
+                            level = 'medium'
+                            comment = "Giá vàng ở mức bình thường"
+                        else: 
+                            level = 'low'
+                            comment = "Giá vàng thấp"
+        
+        # Định dạng giá trị
+        if isinstance(value, (int, float)):
+            if indicator in ['Core_Inflation', 'Food_Inflation', 'Core_Inlation']:
+                formatted_value = f"{value:.1f}%"
+            elif indicator == 'USD_VND':
+                formatted_value = f"{value:,.0f} VND"
+            elif indicator == 'Brent':
+                formatted_value = f"{value:.2f} USD/thùng"
+            elif indicator == 'Gold':
+                formatted_value = f"{value:.2f} USD/ounce"
+            elif indicator in ['Export', 'Import', 'VN_Trade_Balance']:
+                formatted_value = f"{value:.2f} tỷ USD"
+            else:
+                formatted_value = f"{value:.2f}"
+        else:
+            formatted_value = str(value)
+
+        # Màu sắc để biểu thị các mức độ
+        color_text = "#000000"  # Màu đen mặc định
+        if level == 'high':
+            color_text = "#e53935"  # Đỏ
+        elif level == 'medium':
+            color_text = "#43a047"  # Xanh lá
+        elif level == 'low':
+            color_text = "#1e88e5"  # Xanh dương
+            
+        title = self.indicator_names.get(indicator, indicator)
+        
+        # HTML cho tooltip với định dạng đẹp
+        hover_html = f"""
+        <b style='font-size:14px;'>{title}</b><br>
+        <span style='font-size:12px;'><b>Thời gian:</b> {date_str}</span><br>
+        <span style='font-size:12px;'><b>Giá trị:</b> {formatted_value}</span><br>
+        <span style='font-size:12px;'><b>Đánh giá:</b> <span style='color:{color_text};font-weight:bold;'>{comment}</span></span>
+        """
+        
+        return hover_html
+
+    def create_common_layout(self, title, xaxis_title, yaxis_title):
+        """Tạo template chung cho các biểu đồ để đảm bảo thiết kế nhất quán"""
+        layout = dict(
+            title=dict(
+                text=title,
+                font=dict(size=20, color='#1e293b', family='Montserrat, sans-serif'),
+                x=0.5,
+                xanchor='center'
+            ),
+            paper_bgcolor='white',
+            plot_bgcolor='#f8fafc',
+            xaxis=dict(
+                title=xaxis_title,
+                tickfont=dict(size=12, family='Poppins, sans-serif'),
+                gridcolor='#e2e8f0',
+                zeroline=True,
+                zerolinecolor='#cbd5e1',
+                zerolinewidth=1
+            ),
+            yaxis=dict(
+                title=yaxis_title,
+                tickfont=dict(size=12, family='Poppins, sans-serif'),
+                gridcolor='#e2e8f0',
+                zeroline=True,
+                zerolinecolor='#cbd5e1',
+                zerolinewidth=1
+            ),
+            hoverlabel=self.hover_style,
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+                font=dict(family='Poppins, sans-serif', size=12),
+                bgcolor='rgba(255,255,255,0.8)',
+                bordercolor='#e2e8f0',
+                borderwidth=1
+            ),
+            margin=dict(l=60, r=40, t=80, b=60),
+            shapes=[],
+            annotations=[]
+        )
+        return layout
+
+    def apply_theme_to_figure(self, fig):
+        """Áp dụng các tùy chỉnh hình ảnh và animation cho biểu đồ"""
+        # Cập nhật màu sắc và font chữ
+        fig.update_layout(
+            font_family='Poppins, sans-serif',
+            uniformtext_minsize=10,
+            uniformtext_mode='hide',
+            coloraxis_showscale=True,
+            coloraxis_colorbar=dict(
+                thicknessmode="pixels", thickness=15,
+                outlinewidth=1,
+                outlinecolor='#e2e8f0',
+                lenmode="fraction", len=0.6,
+                yanchor="middle",
+                y=0.5,
+                titlefont=dict(size=12, family='Poppins, sans-serif'),
+                tickfont=dict(size=10, family='Poppins, sans-serif')
+            )
+        )
+        
+        # Thêm watermark cho biểu đồ
+        fig.add_annotation(
+            text="Economic Data Analyzer",
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+            font=dict(
+                family='Montserrat, sans-serif',
+                size=36,
+                color='rgba(200,200,200,0.1)'
+            ),
+            textangle=0,
+            align="center",
+        )
+        
+        # Thêm hiệu ứng chuyển động cho biểu đồ
+        for i, trace in enumerate(fig.data):
+            if hasattr(trace, 'marker'):
+                if hasattr(trace.marker, 'color') and trace.marker.color is not None:
+                    continue
+                    
+                if 'scatter' in trace.type.lower():
+                    if isinstance(trace.marker, dict) or trace.marker is None:
+                        fig.data[i].marker = dict(
+                            opacity=0.8,
+                            line=dict(width=1, color='white')
+                        )
+        
+        return fig
+
+    def create_line_chart(self, indicators):
+        """Create line chart with enhanced hover information and annotations"""
+        if not indicators:
+            return None
+        
+        df = self.data_handler.filter_data(indicators=indicators)
+        df['Time'] = df['Year'].astype(str) + '-' + df['Month'].astype(str).str.zfill(2)
+        
+        # Tạo layout chung
+        layout = self.create_common_layout(
+            title="Biến động các chỉ số theo thời gian",
+            xaxis_title="Thời gian",
+            yaxis_title="Giá trị"
+        )
+        
+        # Cập nhật trục X cho biểu đồ đường
+        layout['xaxis']['tickangle'] = -45
+        layout['xaxis']['tickformat'] = '%Y-%m'
+        
+        # Mở rộng diện tích biểu đồ để các nhãn không chồng lên nhau
+        layout['height'] = 700  # Tăng chiều cao
+        layout['margin'] = dict(t=80, l=60, r=40, b=120)  # Tăng lề dưới để có không gian cho nhãn
+        
+        # Cải thiện hover info
+        layout['hoverlabel'] = dict(
+            bgcolor="white",
+            font_size=12,
+            font_family="Arial",
+            bordercolor="#bbb",
+            namelength=-1
+        )
+        
+        fig = go.Figure(layout=layout)
+        
+        # Thêm đường cho từng chỉ số
+        for idx, indicator in enumerate(indicators):
+            hover_texts = [
+                self.get_hover_template(time, indicator, value)
+                for time, value in zip(df['Time'], df[indicator])
+            ]
+            
+            # Tính toán % thay đổi
+            pct_change = df[indicator].pct_change() * 100
+            
+            # Lấy màu từ bảng màu hoặc màu dự phòng nếu không có
+            color = self.color_scheme.get(indicator, self.fallback_colors[idx % len(self.fallback_colors)])
+            
+            # Tạo mảng màu cho các điểm marker dựa trên sự thay đổi giá trị
+            marker_colors = []
+            marker_sizes = []
+            for i, pct in enumerate(pct_change):
+                if i == 0 or pd.isna(pct):
+                    marker_colors.append(color)
+                    marker_sizes.append(8)
+                elif pct > 1:  # Tăng mạnh
+                    marker_colors.append('#4CAF50')  # Xanh lá đậm
+                    marker_sizes.append(10)
+                elif pct > 0:  # Tăng nhẹ
+                    marker_colors.append('#8BC34A')  # Xanh lá nhạt
+                    marker_sizes.append(8)
+                elif pct > -1:  # Giảm nhẹ
+                    marker_colors.append('#FFC107')  # Vàng
+                    marker_sizes.append(8)
+                else:  # Giảm mạnh
+                    marker_colors.append('#F44336')  # Đỏ
+                    marker_sizes.append(10)
+            
+            # Thêm đường chính
+            fig.add_trace(go.Scatter(
+                x=df['Time'],
+                y=df[indicator],
+                name=self.indicator_names.get(indicator, indicator),
+                mode='lines+markers',
+                line=dict(
+                    width=3,
+                    color=color,
+                    shape='spline',  # Làm mịn đường
+                    smoothing=1.3    # Độ mịn của đường
+                ),
+                marker=dict(
+                    size=marker_sizes,
+                    color=marker_colors,
+                    line=dict(
+                        width=1,
+                        color='white'
+                    ),
+                    symbol='circle'
+                ),
+                hoverinfo='text',
+                hovertext=hover_texts,
+                hoverlabel=dict(
+                    bgcolor="white",
+                    font_size=12,
+                    bordercolor=color
+                ),
+                customdata=pct_change,
+            ))
+            
+            # Thêm điểm đánh dấu cho các giá trị đột biến
+            significant_points = []
+            for i, pct in enumerate(pct_change):
+                if i == 0 or pd.isna(pct):
+                    continue
+                # Đánh dấu điểm có thay đổi lớn (>5% hoặc <-5%)
+                if abs(pct) > 5:
+                    significant_points.append(i)
+            
+            if significant_points:
+                fig.add_trace(go.Scatter(
+                    x=[df['Time'].iloc[i] for i in significant_points],
+                    y=[df[indicator].iloc[i] for i in significant_points],
+                    mode='markers',
+                    marker=dict(
+                        size=14,
+                        color=[marker_colors[i] for i in significant_points],
+                        line=dict(
+                            width=2,
+                            color='white'
+                        ),
+                        symbol='circle-open'
+                    ),
+                    hoverinfo='skip',
+                    showlegend=False
+                ))
+        
+        # Thêm các đường lưới
+        fig.update_xaxes(
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='rgba(211, 211, 211, 0.3)'
+        )
+        
+        fig.update_yaxes(
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='rgba(211, 211, 211, 0.3)'
+        )
+        
+        # Cập nhật layout chung
+        fig.update_layout(
+            plot_bgcolor='white',
+            hovermode='closest',
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="center",
+                x=0.5,
+            bgcolor='rgba(255, 255, 255, 0.8)',
+                bordercolor='rgba(211, 211, 211, 0.8)',
+                borderwidth=1
+            )
+        )
+        
+        return fig
+
+    def create_correlation_heatmap(self, indicators):
+        """Create correlation heatmap for selected indicators"""
+        if len(indicators) < 2:
+            return None
+
+        corr_matrix = self.data_handler.create_correlation_data(indicators)
+        
+        fig = go.Figure(data=go.Heatmap(
+            z=corr_matrix,
+            x=[self.indicator_names.get(i, i) for i in indicators],
+            y=[self.indicator_names.get(i, i) for i in indicators],
+            colorscale='RdBu',
+            zmin=-1, zmax=1,
+            hoverongaps=False,
+            hovertemplate='Correlation: %{z:.2f}<extra></extra>'
+        ))
+
+        fig.update_layout(
+            title="Ma trận tương quan giữa các chỉ số",
+            template="plotly_white"
+        )
+        return fig
+
+    def create_seasonal_chart(self, indicator):
+        """Create seasonal chart with enhanced hover information"""
+        if not indicator:
+            return None
+        
+        # Sử dụng filter_data thay vì get_indicator_data
+        df = self.data_handler.filter_data(indicators=[indicator])
+        
+        # Tạo cột tháng để nhóm
+        monthly_avg = df.groupby(df['Month'])[indicator].mean()
+        monthly_std = df.groupby(df['Month'])[indicator].std()
+        
+        # Lấy thông tin giải thích
+        explanation = self.get_indicator_explanation(indicator)
+        
+        hover_texts = [
+            f"<b>Tháng {month}</b><br>" +
+            f"Giá trị trung bình: {avg:.2f}<br>" +
+            f"Độ lệch chuẩn: {std:.2f}<br>" +
+            f"<b>Nhận định:</b> " + (
+                "Cao điểm theo mùa" if avg > monthly_avg.mean() + monthly_std.mean() else
+                "Thấp điểm theo mùa" if avg < monthly_avg.mean() - monthly_std.mean() else
+                "Bình thường theo mùa"
+            ) + f"<br><br><i>{explanation.get('interpretation', '')}</i>"
+            for month, avg, std in zip(range(1, 13), monthly_avg, monthly_std)
+        ]
+        
+        fig = go.Figure()
+        
+        # Thêm đường cho giá trị trung bình
+        fig.add_trace(go.Scatter(
+            x=list(range(1, 13)),
+            y=monthly_avg,
+            mode='lines+markers',
+            line=dict(
+                width=3,
+                color=self.color_scheme.get(indicator, '#3b82f6')
+            ),
+            marker=dict(
+                size=10,
+                color=self.color_scheme.get(indicator, '#3b82f6'),
+                line=dict(width=2, color='white')
+            ),
+            name=f"{self.indicator_names.get(indicator, indicator)} (trung bình)",
+            hovertemplate="%{customdata}<extra></extra>",
+            customdata=hover_texts
+        ))
+        
+        # Thêm vùng độ lệch chuẩn
+        fig.add_trace(go.Scatter(
+            x=list(range(1, 13)),
+            y=monthly_avg + monthly_std,
+            mode='lines',
+            line=dict(width=0),
+            showlegend=False,
+            hoverinfo='skip'
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=list(range(1, 13)),
+            y=monthly_avg - monthly_std,
+            mode='lines',
+            line=dict(width=0),
+            fill='tonexty',
+            fillcolor='rgba(59, 130, 246, 0.2)',
+            name='Độ lệch chuẩn',
+            hoverinfo='skip'
+        ))
+        
+        # Thêm đánh dấu cho các tháng cao điểm/thấp điểm
+        high_months = [month for month in range(1, 13) 
+                       if monthly_avg.iloc[month-1] > monthly_avg.mean() + monthly_std.mean()]
+        
+        low_months = [month for month in range(1, 13) 
+                      if monthly_avg.iloc[month-1] < monthly_avg.mean() - monthly_std.mean()]
+        
+        if high_months:
+            fig.add_trace(go.Scatter(
+                x=high_months,
+                y=[monthly_avg.iloc[month-1] for month in high_months],
+                mode='markers',
+                marker=dict(
+                    symbol='star',
+                    size=12,
+                    color='#dc2626',
+                    line=dict(width=1, color='white')
+                ),
+                name='Cao điểm theo mùa',
+                hoverinfo='skip'
+            ))
+        
+        if low_months:
+            fig.add_trace(go.Scatter(
+                x=low_months,
+                y=[monthly_avg.iloc[month-1] for month in low_months],
+                mode='markers',
+                marker=dict(
+                    symbol='star',
+                    size=12,
+                    color='#0369a1',
+                    line=dict(width=1, color='white')
+                ),
+                name='Thấp điểm theo mùa',
+                hoverinfo='skip'
+            ))
+        
+        # Cập nhật layout
+        fig.update_layout(
+            title=dict(
+                text=f"Biến động theo mùa của {explanation.get('title', indicator)}",
+                font=dict(size=20, color='#1e293b'),
+                x=0.5,
+                xanchor='center'
+            ),
+            xaxis=dict(
+                title="Tháng",
+                tickmode='array',
+                ticktext=['Th.'+str(i) for i in range(1, 13)],
+                tickvals=list(range(1, 13)),
+                gridcolor='#e2e8f0',
+                zeroline=False,
+                tickfont=dict(size=12)
+            ),
+            yaxis=dict(
+                title=f"Giá trị trung bình của {explanation.get('title', indicator)}",
+                gridcolor='#e2e8f0',
+                zeroline=True,
+                zerolinecolor='#94a3b8',
+                zerolinewidth=1,
+                tickfont=dict(size=12)
+            ),
+            hoverlabel=self.hover_style,
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+                font=dict(size=12)
+            ),
+            margin=dict(t=80, l=60, r=40, b=60),
+            annotations=[
+                dict(
+                    x=1,
+                    y=-0.15,
+                    xref='paper',
+                    yref='paper',
+                    text='*Biểu đồ thể hiện giá trị trung bình theo tháng, vùng xám là độ lệch chuẩn',
+                    showarrow=False,
+                    font=dict(size=10, color='#64748b'),
+                    align='right'
+                )
+            ]
+        )
+        
+        return fig
+
+    def create_trend_chart(self, indicator):
+        """Create trend analysis chart for an indicator"""
+        if not indicator:
+            return None
+        
+        # Lấy dữ liệu sử dụng filter_data
+        df = self.data_handler.filter_data(indicators=[indicator])
+        df['Time'] = df['Year'].astype(str) + '-' + df['Month'].astype(str).str.zfill(2)
+        
+        # Tính toán xu hướng dài hạn sử dụng trung bình động 12 tháng
+        df[f'{indicator}_MA12'] = df[indicator].rolling(window=12, min_periods=1).mean()
+        
+        # Tính phần trăm thay đổi để xác định xu hướng
+        df[f'{indicator}_pct_change'] = df[indicator].pct_change(periods=12) * 100
+        
+        # Lấy thông tin giải thích
+        explanation = self.get_indicator_explanation(indicator)
+        
+        fig = go.Figure()
+        
+        # Thêm đường cho giá trị thực tế
+        fig.add_trace(go.Scatter(
+            x=df['Time'],
+            y=df[indicator],
+            mode='lines',
+            name=f"{explanation.get('title', indicator)} (Thực tế)",
+            line=dict(color=self.color_scheme.get(indicator, '#3b82f6'), width=2)
+        ))
+        
+        # Thêm đường cho xu hướng dài hạn (trung bình động)
+        fig.add_trace(go.Scatter(
+            x=df['Time'],
+            y=df[f'{indicator}_MA12'],
+            mode='lines',
+            name='Xu hướng dài hạn (MA-12)',
+            line=dict(color='#ef4444', width=2, dash='dash')
+        ))
+        
+        # Thêm vùng màu cho xu hướng tăng/giảm
+        for i in range(1, len(df) - 1):
+            if df[f'{indicator}_pct_change'].iloc[i] > 0:
+                fig.add_vrect(
+                    x0=df['Time'].iloc[i],
+                    x1=df['Time'].iloc[i+1],
+                    fillcolor='rgba(74, 222, 128, 0.2)',
+                    layer='below',
+                    line_width=0
+                )
+            elif df[f'{indicator}_pct_change'].iloc[i] < 0:
+                fig.add_vrect(
+                    x0=df['Time'].iloc[i],
+                    x1=df['Time'].iloc[i+1],
+                    fillcolor='rgba(248, 113, 113, 0.2)',
+                    layer='below',
+                    line_width=0
+                )
+        
+        # Cập nhật layout
+        fig.update_layout(
+            title=dict(
+                text=f"Phân tích xu hướng dài hạn của {explanation.get('title', indicator)}",
+                font=dict(size=20, color='#1e293b'),
+                x=0.5,
+                xanchor='center'
+            ),
+            xaxis=dict(
+                title='Thời gian',
+                gridcolor='#e2e8f0',
+                tickangle=-45,
+                tickfont=dict(size=12)
+            ),
+            yaxis=dict(
+                title=f"Giá trị của {explanation.get('title', indicator)}",
+                gridcolor='#e2e8f0',
+                zeroline=True,
+                zerolinecolor='#94a3b8',
+                zerolinewidth=1,
+                tickfont=dict(size=12)
+            ),
+            hoverlabel=self.hover_style,
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+                font=dict(size=12)
+            ),
+            margin=dict(t=80, l=60, r=40, b=60),
+            annotations=[
+                dict(
+                    x=1, 
+                    y=-0.15,
+                    xref='paper',
+                    yref='paper',
+                    text='*Vùng màu xanh: xu hướng tăng | Vùng màu đỏ: xu hướng giảm',
+                    showarrow=False,
+                    font=dict(size=10, color='#64748b'),
+                    align='right'
+                )
+            ]
+        )
+        
+        return fig
+
+    def get_indicator_explanation(self, indicator):
+        """Get detailed explanation for an indicator"""
+        explanations = {
+            'Core_Inflation': {
+                'title': 'Lạm phát cơ bản',
+                'description': 'Chỉ số giá tiêu dùng không bao gồm giá thực phẩm và năng lượng, phản ánh xu hướng lạm phát dài hạn.',
+                'impact': 'Ảnh hưởng trực tiếp đến chính sách tiền tệ và lãi suất của ngân hàng trung ương.',
+                'interpretation': 'Giá trị dương cho thấy áp lực lạm phát tăng, giá trị âm thể hiện xu hướng giảm phát.',
+                'threshold': {
+                    'high': '> 2%: Cần theo dõi chặt chẽ',
+                    'medium': '1-2%: Mức ổn định',
+                    'low': '< 1%: Áp lực lạm phát thấp'
+                }
+            },
+            'Core_Inlation': {
+                'title': 'Lạm phát cơ bản',
+                'description': 'Chỉ số giá tiêu dùng không bao gồm giá thực phẩm và năng lượng, phản ánh xu hướng lạm phát dài hạn.',
+                'impact': 'Ảnh hưởng trực tiếp đến chính sách tiền tệ và lãi suất của ngân hàng trung ương.',
+                'interpretation': 'Giá trị dương cho thấy áp lực lạm phát tăng, giá trị âm thể hiện xu hướng giảm phát.',
+                'threshold': {
+                    'high': '> 2%: Cần theo dõi chặt chẽ',
+                    'medium': '1-2%: Mức ổn định',
+                    'low': '< 1%: Áp lực lạm phát thấp'
+                }
+            },
+            'Food_Inflation': {
+                'title': 'Lạm phát thực phẩm',
+                'description': 'Biến động giá các mặt hàng thực phẩm, chiếm tỷ trọng lớn trong chi tiêu của người dân.',
+                'impact': 'Ảnh hưởng trực tiếp đến đời sống người dân và chỉ số giá tiêu dùng tổng thể.',
+                'interpretation': 'Thường có tính chu kỳ theo mùa vụ và chịu ảnh hưởng từ thời tiết, thiên tai.',
+                'threshold': {
+                    'high': '> 3%: Giá thực phẩm tăng mạnh',
+                    'medium': '1-3%: Biến động bình thường',
+                    'low': '< 1%: Giá thực phẩm ổn định'
+                }
+            },
+            'USD_VND': {
+                'title': 'Tỷ giá USD/VND',
+                'description': 'Tỷ giá hối đoái giữa đồng Việt Nam và đô la Mỹ, phản ánh sức mạnh tương đối giữa hai đồng tiền.',
+                'impact': 'Ảnh hưởng đến hoạt động xuất nhập khẩu, đầu tư nước ngoài và giá cả hàng hóa.',
+                'interpretation': 'Tăng thể hiện VND mất giá, giảm thể hiện VND tăng giá so với USD.',
+                'threshold': {
+                    'high': '> 2% tháng: VND mất giá mạnh',
+                    'medium': '0.5-2%: Biến động bình thường',
+                    'low': '< 0.5%: Tỷ giá ổn định'
+                }
+            },
+            'Brent': {
+                'title': 'Giá dầu Brent',
+                'description': 'Giá dầu thô Brent - một trong những chỉ số tham chiếu quan trọng của thị trường dầu mỏ thế giới.',
+                'impact': 'Ảnh hưởng đến chi phí sản xuất, vận tải và giá nhiên liệu trong nước.',
+                'interpretation': 'Biến động mạnh thường do căng thẳng địa chính trị hoặc thay đổi cung cầu toàn cầu.',
+                'threshold': {
+                    'high': '> 80 USD/thùng: Giá cao',
+                    'medium': '50-80 USD/thùng: Mức cân bằng',
+                    'low': '< 50 USD/thùng: Giá thấp'
+                }
+            },
+            'Export': {
+                'title': 'Kim ngạch xuất khẩu',
+                'description': 'Tổng giá trị hàng hóa và dịch vụ xuất khẩu của Việt Nam.',
+                'impact': 'Phản ánh năng lực cạnh tranh và khả năng tham gia chuỗi giá trị toàn cầu.',
+                'interpretation': 'Tăng trưởng dương thể hiện cải thiện năng lực xuất khẩu.',
+                'threshold': {
+                    'high': '> 10% năm: Tăng trưởng mạnh',
+                    'medium': '5-10%: Tăng trưởng ổn định',
+                    'low': '< 5%: Tăng trưởng chậm'
+                }
+            },
+            'Import': {
+                'title': 'Kim ngạch nhập khẩu',
+                'description': 'Tổng giá trị hàng hóa và dịch vụ nhập khẩu vào Việt Nam.',
+                'impact': 'Phản ánh nhu cầu tiêu dùng và đầu tư trong nước.',
+                'interpretation': 'Tăng có thể do đầu tư mở rộng sản xuất hoặc tiêu dùng tăng.',
+                'threshold': {
+                    'high': '> 12% năm: Nhu cầu cao',
+                    'medium': '6-12%: Nhu cầu bình thường',
+                    'low': '< 6%: Nhu cầu thấp'
+                }
+            },
+            'VN_Trade_Balance': {
+                'title': 'Cán cân thương mại',
+                'description': 'Chênh lệch giữa giá trị xuất khẩu và nhập khẩu.',
+                'impact': 'Ảnh hưởng đến tỷ giá hối đoái và dự trữ ngoại hối.',
+                'interpretation': 'Dương là thặng dư, âm là thâm hụt thương mại.',
+                'threshold': {
+                    'high': '> 1 tỷ USD: Thặng dư lớn',
+                    'medium': '-1 đến 1 tỷ USD: Cân bằng',
+                    'low': '< -1 tỷ USD: Thâm hụt lớn'
+                }
+            },
+            'Gold': {
+                'title': 'Giá vàng',
+                'description': 'Giá vàng thế giới được giao dịch trên thị trường quốc tế, thường tính bằng USD/ounce.',
+                'impact': 'Là tài sản trú ẩn an toàn, ảnh hưởng đến thị trường tài chính và lạm phát kỳ vọng.',
+                'interpretation': 'Tăng khi có bất ổn kinh tế/chính trị, giảm khi kinh tế phát triển ổn định.',
+                'threshold': {
+                    'high': '> 1800 USD/ounce: Giá cao',
+                    'medium': '1500-1800 USD/ounce: Mức bình thường',
+                    'low': '< 1500 USD/ounce: Giá thấp'
+                }
+            },
+            'VN_Gasoline_Prices': {
+                'title': 'Giá xăng dầu Việt Nam',
+                'description': 'Giá bán lẻ xăng dầu trong nước, phản ánh biến động giá năng lượng toàn cầu và chính sách quản lý giá.',
+                'impact': 'Ảnh hưởng trực tiếp đến chi phí sản xuất, vận tải và lạm phát.',
+                'interpretation': 'Biến động theo giá dầu thế giới nhưng có độ trễ và mức độ thay đổi khác nhau do quỹ bình ổn giá.',
+                'threshold': {
+                    'high': '> 25.000 VND/lít: Giá cao',
+                    'medium': '20.000-25.000 VND/lít: Mức bình thường',
+                    'low': '< 20.000 VND/lít: Giá thấp'
+                }
+            },
+            'VN_rice_price': {
+                'title': 'Giá gạo Việt Nam',
+                'description': 'Giá gạo xuất khẩu của Việt Nam, thường tính bằng USD/tấn.',
+                'impact': 'Ảnh hưởng đến thu nhập nông dân, an ninh lương thực và cán cân thương mại.',
+                'interpretation': 'Biến động theo mùa vụ, chính sách xuất khẩu và nhu cầu thị trường quốc tế.',
+                'threshold': {
+                    'high': '> 500 USD/tấn: Giá cao',
+                    'medium': '400-500 USD/tấn: Mức bình thường',
+                    'low': '< 400 USD/tấn: Giá thấp'
+                }
+            },
+            'VN_coffee,tea,mate,spices': {
+                'title': 'Xuất khẩu cà phê, chè và gia vị',
+                'description': 'Giá trị xuất khẩu các mặt hàng cà phê, chè, mate và gia vị của Việt Nam.',
+                'impact': 'Đóng góp vào kim ngạch xuất khẩu và thu nhập của nông dân vùng sản xuất.',
+                'interpretation': 'Biến động theo mùa vụ và nhu cầu thị trường quốc tế.',
+                'threshold': {
+                    'high': '> 15% tăng trưởng năm: Rất tốt',
+                    'medium': '5-15% tăng trưởng năm: Bình thường',
+                    'low': '< 5% tăng trưởng năm: Thấp'
+                }
+            },
+            'MonthlyCPI': {
+                'title': 'Chỉ số giá tiêu dùng hàng tháng',
+                'description': 'Chỉ số đo lường sự thay đổi về giá của một rổ hàng hóa và dịch vụ tiêu dùng phổ biến theo tháng.',
+                'impact': 'Là chỉ số chính để đánh giá lạm phát và điều chỉnh chính sách tiền tệ.',
+                'interpretation': 'Tăng liên tục cho thấy áp lực lạm phát, giảm có thể báo hiệu suy thoái.',
+                'threshold': {
+                    'high': '> 0.5% tháng: Lạm phát cao',
+                    'medium': '0.2-0.5% tháng: Lạm phát vừa phải',
+                    'low': '< 0.2% tháng: Lạm phát thấp'
+                }
+            },
+            'China_CPI': {
+                'title': 'Chỉ số giá tiêu dùng Trung Quốc',
+                'description': 'Chỉ số giá tiêu dùng của Trung Quốc, đo lường mức độ lạm phát tại thị trường lớn nhất khu vực.',
+                'impact': 'Ảnh hưởng đến giá hàng hóa xuất nhập khẩu và chuỗi cung ứng toàn cầu.',
+                'interpretation': 'Biến động giá tại Trung Quốc thường có tác động lan tỏa đến Việt Nam.',
+                'threshold': {
+                    'high': '> 3% năm: Lạm phát cao',
+                    'medium': '1-3% năm: Lạm phát vừa phải',
+                    'low': '< 1% năm: Lạm phát thấp'
+                }
+            },
+            'Industrial_products': {
+                'title': 'Sản xuất công nghiệp',
+                'description': 'Chỉ số sản xuất công nghiệp, phản ánh tăng trưởng trong lĩnh vực sản xuất và chế tạo.',
+                'impact': 'Ảnh hưởng trực tiếp đến tăng trưởng GDP và việc làm trong ngành công nghiệp.',
+                'interpretation': 'Tăng thể hiện hoạt động sản xuất mạnh mẽ, giảm báo hiệu suy giảm kinh tế.',
+                'threshold': {
+                    'high': '> 8% năm: Tăng trưởng mạnh',
+                    'medium': '4-8% năm: Tăng trưởng ổn định',
+                    'low': '< 4% năm: Tăng trưởng yếu'
+                }
+            },
+            'Agriculture, Forestry and Fishing': {
+                'title': 'Nông, lâm nghiệp và thủy sản',
+                'description': 'Chỉ số tăng trưởng của ngành nông, lâm nghiệp và thủy sản, phản ánh sản lượng trong lĩnh vực này.',
+                'impact': 'Ảnh hưởng đến an ninh lương thực, đời sống nông dân và xuất khẩu nông sản.',
+                'interpretation': 'Có tính chu kỳ theo mùa vụ và chịu ảnh hưởng lớn từ điều kiện thời tiết.',
+                'threshold': {
+                    'high': '> 4% năm: Tăng trưởng tốt',
+                    'medium': '2-4% năm: Tăng trưởng ổn định',
+                    'low': '< 2% năm: Tăng trưởng thấp'
+                }
+            },
+            'Unemployment Rate': {
+                'title': 'Tỷ lệ thất nghiệp',
+                'description': 'Phần trăm lực lượng lao động không có việc làm nhưng đang tích cực tìm kiếm việc làm.',
+                'impact': 'Phản ánh sức khỏe của thị trường lao động và tình hình kinh tế.',
+                'interpretation': 'Tăng trong thời gian dài báo hiệu suy thoái kinh tế, giảm thể hiện phục hồi.',
+                'threshold': {
+                    'high': '> 3% (Việt Nam): Thất nghiệp cao',
+                    'medium': '2-3%: Mức bình thường',
+                    'low': '< 2%: Thất nghiệp thấp'
+                }
+            },
+            'VN_fiscal_deficit': {
+                'title': 'Thâm hụt ngân sách',
+                'description': 'Chênh lệch giữa chi tiêu công và thu ngân sách của chính phủ.',
+                'impact': 'Ảnh hưởng đến nợ công, áp lực lạm phát và tỷ giá hối đoái.',
+                'interpretation': 'Thâm hụt cao có thể kích thích tăng trưởng ngắn hạn nhưng gây áp lực dài hạn.',
+                'threshold': {
+                    'high': '> 5% GDP: Thâm hụt cao',
+                    'medium': '3-5% GDP: Mức bình thường',
+                    'low': '< 3% GDP: Thâm hụt thấp'
+                }
+            },
+            'VN_Interest_Rate': {
+                'title': 'Lãi suất chính sách',
+                'description': 'Lãi suất cơ bản do Ngân hàng Nhà nước Việt Nam điều hành.',
+                'impact': 'Ảnh hưởng đến chi phí vay vốn, đầu tư và tiết kiệm trong nền kinh tế.',
+                'interpretation': 'Tăng thường nhằm kiểm soát lạm phát, giảm để kích thích tăng trưởng.',
+                'threshold': {
+                    'high': '> 6%: Lãi suất cao',
+                    'medium': '4-6%: Mức bình thường',
+                    'low': '< 4%: Lãi suất thấp'
+                }
+            },
+            'VN_money_supply': {
+                'title': 'Cung tiền M2',
+                'description': 'Tổng lượng tiền trong lưu thông và tiền gửi không kỳ hạn, tiền gửi có kỳ hạn ngắn.',
+                'impact': 'Ảnh hưởng đến lạm phát, tăng trưởng tín dụng và hoạt động kinh tế.',
+                'interpretation': 'Tăng nhanh có thể gây lạm phát, tăng chậm có thể hạn chế tăng trưởng.',
+                'threshold': {
+                    'high': '> 15% năm: Tăng trưởng nhanh',
+                    'medium': '10-15% năm: Mức bình thường',
+                    'low': '< 10% năm: Tăng trưởng chậm'
+                }
+            },
+            'PC1': {
+                'title': 'Thành phần chính 1',
+                'description': 'Thành phần chính đầu tiên từ phân tích PCA, tổng hợp biến động của nhiều chỉ số kinh tế.',
+                'impact': 'Cung cấp cái nhìn tổng quan về xu hướng chung của nền kinh tế.',
+                'interpretation': 'Giá trị dương thường thể hiện sự mở rộng, giá trị âm báo hiệu thu hẹp kinh tế.',
+                'threshold': {
+                    'high': '> 1: Tăng trưởng mạnh',
+                    'medium': '-1 đến 1: Mức bình thường',
+                    'low': '< -1: Suy giảm'
+                }
+            }
+        }
+        
+        return explanations.get(indicator, {
+            'title': self.indicator_names.get(indicator, indicator),
+            'description': 'Chỉ số kinh tế quan trọng cần theo dõi.',
+            'impact': 'Có ảnh hưởng đến các quyết định chính sách và hoạt động kinh tế.',
+            'interpretation': 'Cần phân tích trong bối cảnh tổng thể của nền kinh tế.',
+            'threshold': {
+                'high': 'Giá trị cao hơn bình thường',
+                'medium': 'Giá trị trong khoảng bình thường',
+                'low': 'Giá trị thấp hơn bình thường'
+            }
+        })
+
+    def get_correlation_explanation(self, indicator1, indicator2, correlation):
+        """Get explanation for correlation between two indicators"""
+        if correlation > 0.7:
+            strength = "mạnh tích cực"
+            interpretation = "có xu hướng tăng/giảm cùng chiều"
+        elif correlation > 0.3:
+            strength = "trung bình tích cực"
+            interpretation = "thường tăng/giảm cùng chiều"
+        elif correlation > -0.3:
+            strength = "yếu"
+            interpretation = "không có mối liên hệ rõ ràng"
+        elif correlation > -0.7:
+            strength = "trung bình tiêu cực"
+            interpretation = "thường tăng/giảm ngược chiều"
+        else:
+            strength = "mạnh tiêu cực"
+            interpretation = "có xu hướng tăng/giảm ngược chiều"
+
+        return {
+            'strength': strength,
+            'interpretation': interpretation,
+            'description': f"Mối tương quan {strength} ({correlation:.2f}) giữa {self.indicator_names.get(indicator1)} và {self.indicator_names.get(indicator2)} cho thấy hai chỉ số này {interpretation}."
+        }
+
+    def create_bar_chart(self, indicators):
+        """Create bar chart for selected indicators"""
+        if not indicators:
+            return None
+
+        df = self.data_handler.filter_data(indicators=indicators)
+        df['Time'] = df['Year'].astype(str) + '-' + df['Month'].astype(str).str.zfill(2)
+        
+        fig = go.Figure()
+        
+        # Xác định số lượng điểm dữ liệu để tự động điều chỉnh độ rộng của cột
+        num_data_points = len(df)
+        # Nếu có nhiều điểm dữ liệu, làm cho cột rộng hơn để dễ nhìn
+        base_width = min(0.8, 20 / num_data_points) if num_data_points > 0 else 0.8
+        bar_width = base_width / len(indicators) if len(indicators) > 0 else base_width
+        
+        # Màu sắc sống động và đối lập hơn
+        vibrant_colors = ['#FF5733', '#33A8FF', '#33FF57', '#FF33A8', '#A833FF', '#FFCE33', '#33FFE0', '#E033FF']
+        
+        for i, indicator in enumerate(indicators):
+            color_idx = i % len(vibrant_colors)
+            
+            # Lấy thông tin giải thích cho chỉ số
+            explanation = self.get_indicator_explanation(indicator)
+            
+            # Tạo tooltip tùy chỉnh với nhận xét
+            hover_data = []
+            for idx, row in df.iterrows():
+                # Lấy giá trị hiện tại của chỉ số
+                value = row[indicator]
+                
+                # Xác định mức độ dựa trên ngưỡng
+                if 'threshold' in explanation:
+                    threshold = explanation['threshold']
+                    level = "N/A"
+                    comment = "Không có dữ liệu để đánh giá"
+                    
+                    # Trích xuất giá trị số từ chuỗi ngưỡng (bỏ qua phần mô tả)
+                    # Ví dụ: "> 2%: Cần theo dõi chặt chẽ" -> lấy 2
+                    try:
+                        high_text = threshold.get('high', '')
+                        medium_text = threshold.get('medium', '')
+                        low_text = threshold.get('low', '')
+                        
+                        # Xử lý ngưỡng cao
+                        high_threshold = None
+                        if high_text and ">" in high_text:
+                            high_match = high_text.split('>')[1].split(':')[0].strip()
+                            high_value = float(high_match.replace('%', '').replace('GDP', '').strip())
+                            high_threshold = high_value
+                        
+                        # Xử lý ngưỡng trung bình
+                        medium_threshold_low, medium_threshold_high = None, None
+                        if medium_text and "-" in medium_text:
+                            medium_parts = medium_text.split('-')
+                            medium_low = float(medium_parts[0].replace('%', '').replace('GDP', '').strip())
+                            medium_high_text = medium_parts[1].split(':')[0].strip()
+                            medium_high = float(medium_high_text.replace('%', '').replace('GDP', '').strip())
+                            medium_threshold_low, medium_threshold_high = medium_low, medium_high
+                        
+                        # Xử lý ngưỡng thấp
+                        low_threshold = None
+                        if low_text and "<" in low_text:
+                            low_match = low_text.split('<')[1].split(':')[0].strip()
+                            low_value = float(low_match.replace('%', '').replace('GDP', '').strip())
+                            low_threshold = low_value
+                        
+                        # Xác định mức độ dựa trên ngưỡng
+                        if high_threshold is not None and value > high_threshold:
+                            level = "Cao"
+                            comment = high_text.split(':')[1].strip() if ':' in high_text else "Giá trị cao"
+                        elif low_threshold is not None and value < low_threshold:
+                            level = "Thấp"
+                            comment = low_text.split(':')[1].strip() if ':' in low_text else "Giá trị thấp"
+                        elif medium_threshold_low is not None and medium_threshold_high is not None and medium_threshold_low <= value <= medium_threshold_high:
+                            level = "Trung bình"
+                            comment = medium_text.split(':')[1].strip() if ':' in medium_text else "Giá trị trung bình"
+                        else:
+                            level = "N/A"
+                            comment = "Không thuộc các ngưỡng đã định nghĩa"
+                    except:
+                        # Nếu không thể chuyển đổi ngưỡng thành số, sử dụng mức độ mặc định
+                        level = "N/A"
+                        comment = "Không thể xác định mức độ"
+                
+                # Tạo chuỗi hover text
+                hover_text = f"""
+                <b>{self.indicator_names.get(indicator, indicator)}</b><br>
+                Thời gian: {row['Time']}<br>
+                Giá trị: {value:.2f}<br>
+                Mức độ: <b>{level}</b><br>
+                Nhận xét: {comment}
+                """
+                hover_data.append(hover_text)
+            
+            # Màu rõ ràng hơn theo loại chỉ số
+            # Lạm phát / giá cả: màu đỏ và cam
+            # Thương mại: màu xanh dương và xanh lá
+            # Hàng hóa: màu tím và hồng
+            # Kinh tế vĩ mô: màu vàng và nâu
+            indicator_colors = {
+                'Core_Inlation': '#E53935',      # Đỏ đậm
+                'Food_Inflation': '#FB8C00',     # Cam đậm
+                'MonthlyCPI': '#D32F2F',         # Đỏ tươi
+                'China_CPI': '#FF7043',          # Cam tươi
+                
+                'Export': '#1976D2',             # Xanh dương đậm
+                'Import': '#43A047',             # Xanh lá đậm
+                'VN_Trade_Balance': '#0288D1',   # Xanh dương tươi
+                'USD_VND': '#66BB6A',            # Xanh lá tươi
+                
+                'Brent': '#7B1FA2',              # Tím đậm
+                'Gold': '#FFD600',               # Vàng đậm
+                'VN_Gasoline_Prices': '#673AB7', # Tím tươi
+                'VN_rice_price': '#FFA000',      # Vàng cam
+                'VN_coffee,tea,mate,spices': '#9575CD', # Tím nhạt
+                
+                'Industrial_products': '#F57C00', # Cam đậm
+                'Agriculture, Forestry and Fishing': '#689F38', # Xanh lá-olive
+                'Unemployment Rate': '#D84315',  # Cam-đỏ
+                'VN_fiscal_deficit': '#C2185B',  # Hồng đậm
+                'VN_Interest_Rate': '#00796B',   # Xanh ngọc đậm
+                'VN_money_supply': '#4527A0'     # Tím-xanh
+            }
+            
+            # Lấy màu tùy chỉnh cho chỉ số hoặc dùng màu mặc định
+            color = indicator_colors.get(indicator, vibrant_colors[color_idx])
+            
+            fig.add_trace(go.Bar(
+                x=df['Time'],
+                y=df[indicator],
+                name=self.indicator_names.get(indicator, indicator),
+                marker=dict(
+                    color=color,
+                    line=dict(color='black', width=1)  # Thêm đường viền đen để dễ nhìn trên nền
+                ),
+                width=bar_width,
+                offset=bar_width * (i - len(indicators)/2 + 0.5),
+                hovertemplate="%{customdata}<extra></extra>",
+                customdata=hover_data,
+                opacity=0.9  # Độ mờ nhẹ để màu không quá chói
+            ))
+
+        # Tính toán chiều cao khung biểu đồ dựa trên số lượng chỉ số
+        chart_height = max(600, 400 + 50 * len(indicators))
+        
+        # Giới hạn số lượng điểm trên trục x nếu có quá nhiều
+        tickvals = df['Time'].iloc[::max(1, len(df) // 12)] if len(df) > 12 else df['Time']
+
+        fig.update_layout(
+            title=dict(
+                text=f"So sánh giá trị {', '.join([self.indicator_names.get(ind, ind) for ind in indicators])} theo thời gian",
+                font=dict(size=20, color='#1e293b'),
+                x=0.5,
+                xanchor='center'
+            ),
+            xaxis=dict(
+                title="Thời gian",
+                tickangle=-45,
+                tickmode='array',
+                tickvals=tickvals,
+                tickfont=dict(size=10)
+            ),
+            yaxis=dict(
+                title="Giá trị",
+                gridcolor='rgba(230, 230, 230, 0.8)'  # Lưới nhạt hơn để cột nổi bật
+            ),
+            barmode='group',
+            template="plotly_white",
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="center",
+                x=0.5
+            ),
+            plot_bgcolor='white',  # Nền trắng thay vì xám
+            height=chart_height,
+            margin=dict(l=80, r=80, t=100, b=100),
+            hoverlabel=dict(
+                bgcolor="white",
+                font_size=12,
+                font_family="Arial"
+            )
+        )
+        
+        # Thêm đường lưới ngang để dễ đọc giá trị
+        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(200, 200, 200, 0.3)')
+        
+        return fig
+
+    def create_scatter_plot(self, indicators):
+        """Create scatter plot with enhanced visualization"""
+        if len(indicators) != 2:
+            return None
+        
+        indicator1, indicator2 = indicators
+        df = self.data_handler.filter_data(indicators=indicators)
+        df['Time'] = df['Year'].astype(str) + '-' + df['Month'].astype(str).str.zfill(2)
+        
+        # Lấy thông tin giải thích
+        explanation1 = self.get_indicator_explanation(indicator1)
+        explanation2 = self.get_indicator_explanation(indicator2)
+        
+        # Tạo layout chung
+        layout = self.create_common_layout(
+            title=f"Mối quan hệ giữa {explanation1.get('title', indicator1)} và {explanation2.get('title', indicator2)}",
+            xaxis_title=explanation1.get('title', indicator1),
+            yaxis_title=explanation2.get('title', indicator2)
+        )
+        
+        # Khởi tạo figure với layout
+        fig = go.Figure(layout=layout)
+        
+        # Tính hệ số tương quan
+        correlation = df[indicator1].corr(df[indicator2])
+        correlation_text = f"Hệ số tương quan: {correlation:.2f}"
+        
+        # Màu sắc theo thời gian
+        color_scale = px.colors.sequential.Viridis
+        
+        hover_texts = []
+        for i, row in df.iterrows():
+            hover_text = (
+                f"<b>Thời điểm:</b> {row['Time']}<br>" +
+                f"<b>{explanation1.get('title', indicator1)}:</b> {row[indicator1]:.2f}<br>" +
+                f"<b>{explanation2.get('title', indicator2)}:</b> {row[indicator2]:.2f}<br>" +
+                f"<b>Mối quan hệ:</b> Khi {explanation1.get('title', indicator1)} tăng, {explanation2.get('title', indicator2)} {'cũng tăng' if correlation > 0 else 'giảm'}"
+            )
+            hover_texts.append(hover_text)
+        
+        # Thêm scatter plot
+        fig.add_trace(go.Scatter(
+            x=df[indicator1],
+            y=df[indicator2],
+            mode='markers',
+            marker=dict(
+                size=10,
+                color=df['Year'],
+                colorscale=color_scale,
+                opacity=0.8,
+                line=dict(width=1, color='white'),
+                showscale=True,
+                colorbar=dict(title="Năm")
+            ),
+            text=df['Time'],
+            hovertemplate="%{customdata}<extra></extra>",
+            customdata=hover_texts,
+            name='Dữ liệu'
+        ))
+        
+        # Thêm đường xu hướng nếu có tương quan đáng kể
+        if abs(correlation) > 0.3:
+            z = np.polyfit(df[indicator1], df[indicator2], 1)
+            x_range = np.linspace(df[indicator1].min(), df[indicator1].max(), 100)
+            y_range = z[0] * x_range + z[1]
+            
+            fig.add_trace(go.Scatter(
+                x=x_range,
+                y=y_range,
+                mode='lines',
+                line=dict(
+                    color='rgba(255, 0, 0, 0.5)' if correlation < 0 else 'rgba(0, 128, 0, 0.5)',
+                    width=2,
+                    dash='dash'
+                ),
+                name=f'Xu hướng ({correlation:.2f})',
+                hoverinfo='skip'
+            ))
+        
+        # Áp dụng theme chung
+        fig = self.apply_theme_to_figure(fig)
+        
+        return fig
+
+    def create_calendar_heatmap(self, indicator):
+        """Create calendar heatmap with enhanced annotations"""
+        if not indicator:
+            return None
+        
+        # Get data using filter_data
+        df = self.data_handler.filter_data(indicators=[indicator])
+        df['Time'] = df['Year'].astype(str) + '-' + df['Month'].astype(str).str.zfill(2)
+        
+        # Get unique years and limit to last 10 years if too many
+        years = sorted(df['Year'].unique())
+        if len(years) > 10:
+            years = years[-10:]  # Take only the last 10 years
+        
+        # Calculate vertical spacing based on number of years
+        vertical_spacing = min(0.03, 1.0 / (len(years) + 1))
+        
+        # Create subplots
+        fig = make_subplots(
+            rows=len(years),
+            cols=1,
+            subplot_titles=[f'Năm {year}' for year in years],
+            vertical_spacing=vertical_spacing
+        )
+        
+        # Calculate overall min and max for consistent color scale
+        vmin, vmax = df[indicator].min(), df[indicator].max()
+        
+        # Get indicator explanation
+        explanation = self.get_indicator_explanation(indicator)
+        
+        for i, year in enumerate(years, 1):
+            year_data = df[df['Year'] == year]
+            
+            # Create month labels and values
+            months = list(range(1, 13))
+            values = []
+            hover_texts = []
+            
+            for month in months:
+                month_data = year_data[year_data['Month'] == month]
+                if not month_data.empty:
+                    value = month_data[indicator].iloc[0]
+                    values.append(value)
+                    
+                    # Create detailed hover text
+                    date_key = f'{year}-{month:02d}'
+                    hover_text = self.get_hover_template(date_key, indicator, value)
+                    
+                    # Add historical context if available
+                    annotation = self.historical_annotations.get(date_key, {})
+                    if annotation:
+                        hover_text += f"<br><br><b>Sự kiện:</b> {annotation['event']}"
+                        hover_text += f"<br><b>Tác động:</b> {annotation['impact']}"
+                        hover_text += f"<br><b>Bối cảnh:</b> {annotation['context']}"
+                    
+                    hover_texts.append(hover_text)
+                else:
+                    values.append(None)
+                    hover_texts.append("Không có dữ liệu")
+            
+            # Add heatmap trace
+            fig.add_trace(
+                go.Heatmap(
+                    x=months,
+                    y=[year],
+                    z=[values],
+                    colorscale='RdBu_r',
+                    zmin=vmin,
+                    zmax=vmax,
+                    showscale=True if i == 1 else False,
+                    hoverongaps=False,
+                    text=[hover_texts],
+                    hovertemplate="%{text}<extra></extra>"
+                ),
+                row=i,
+                col=1
+            )
+            
+            # Add markers for significant events
+            for month in months:
+                date_key = f'{year}-{month:02d}'
+                if date_key in self.historical_annotations:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=[month],
+                            y=[year],
+                            mode='markers',
+                            marker=dict(
+                                symbol='star',
+                                size=8,
+                                color='black',
+                                line=dict(width=1, color='white')
+                            ),
+                            showlegend=False,
+                            hoverinfo='skip'
+                        ),
+                        row=i,
+                        col=1
+                    )
+        
+        # Update layout
+        fig.update_layout(
+            title=dict(
+                text=f"Biến động theo tháng và năm của {explanation['title']}",
+                font=dict(size=20, color='#1e293b'),
+                x=0.5,
+                xanchor='center'
+            ),
+            height=100 * len(years) + 150,
+            showlegend=False,
+            hoverlabel=self.hover_style
+        )
+        
+        # Update all xaxes
+        for i in range(len(years)):
+            fig.update_xaxes(
+                ticktext=['Th.' + str(i) for i in range(1, 13)],
+                tickvals=list(range(1, 13)),
+                gridcolor='#e2e8f0',
+                row=i+1,
+                col=1
+            )
+        
+        # Add year labels
+        for i in range(len(years)):
+            fig.update_yaxes(
+                ticktext=[str(years[i])],
+                tickvals=[years[i]],
+                gridcolor='#e2e8f0',
+                row=i+1,
+                col=1
+            )
+        
+        # Add colorbar title
+        fig.update_layout(
+            coloraxis_colorbar=dict(
+                title=dict(
+                    text="Giá trị",
+                    side="right"
+                )
+            )
+        )
+        
+        return fig
+
+    def create_sankey_chart(self, indicators, time_points=None):
+        """Create Sankey diagram showing flow between time points"""
+        if len(indicators) < 1:
+            return None
+            
+        df = self.data_handler.filter_data(indicators=indicators)
+        if time_points is None:
+            # Select 4 evenly spaced time points
+            time_points = list(range(0, len(df), len(df)//3))[:4]
+        
+        # Prepare nodes and links
+        nodes = []
+        links = []
+        node_index = 0
+        
+        # Ensure all indicators have colors
+        indicator_colors = {}
+        for idx, indicator in enumerate(indicators):
+            indicator_colors[indicator] = self.color_scheme.get(indicator, self.fallback_colors[idx % len(self.fallback_colors)])
+        
+        for t in range(len(time_points)-1):
+            start_idx = time_points[t]
+            end_idx = time_points[t+1]
+            
+            # Add nodes for current time point
+            for indicator in indicators:
+                nodes.append(dict(
+                    name=f"{self.indicator_names.get(indicator)}\n{df.iloc[start_idx]['Year']}-{df.iloc[start_idx]['Month']}",
+                    color=indicator_colors[indicator]
+                ))
+                
+                if t == len(time_points)-2:  # Add end nodes for last time point
+                    nodes.append(dict(
+                        name=f"{self.indicator_names.get(indicator)}\n{df.iloc[end_idx]['Year']}-{df.iloc[end_idx]['Month']}",
+                        color=indicator_colors[indicator]
+                    ))
+                
+                # Add links with valid colors
+                if t < len(time_points)-2:
+                    start_val = df.iloc[start_idx][indicator]
+                    end_val = df.iloc[end_idx][indicator]
+                    links.append(dict(
+                        source=node_index,
+                        target=node_index + len(indicators),
+                        value=max(0.1, abs(end_val - start_val)),  # Ensure positive value
+                        color=indicator_colors[indicator]
+                    ))
+                
+                node_index += 1
+        
+        fig = go.Figure(data=[go.Sankey(
+            node=dict(
+                pad=15,
+                thickness=20,
+                line=dict(color="black", width=0.5),
+                label=[n['name'] for n in nodes],
+                color=[n['color'] for n in nodes]
+            ),
+            link=dict(
+                source=[l['source'] for l in links],
+                target=[l['target'] for l in links],
+                value=[l['value'] for l in links],
+                color=[l['color'] for l in links]
+            )
+        )])
+
+        fig.update_layout(
+            title=dict(
+                text="Dòng chảy giá trị theo thời gian",
+                font=dict(size=20, color='#1e293b')
+            ),
+            font=dict(size=10),
+            hoverlabel=self.hover_style,
+            template="plotly_white",
+            height=600,
+            margin=dict(t=60, l=40, r=40, b=40)
+        )
+        
+        return fig
+
+    def create_pie_chart(self, indicators, time_point=None):
+        """Create pie chart showing distribution at a specific time point"""
+        if len(indicators) < 2:
+            return None
+            
+        df = self.data_handler.filter_data(indicators=indicators)
+        
+        if time_point is None:
+            # Use the latest time point by default
+            time_point = len(df) - 1
+            
+        # Get data for the specified time point
+        data = df.iloc[time_point]
+        values = [data[ind] for ind in indicators]
+        labels = [self.indicator_names.get(ind) for ind in indicators]
+        colors = [self.color_scheme.get(ind) for ind in indicators]
+        
+        # Calculate percentiles for interpretation
+        percentiles = {}
+        for indicator in indicators:
+            indicator_values = df[indicator]
+            percentiles[indicator] = stats.percentileofscore(indicator_values, data[indicator])/100
+            
+        hover_text = [
+            f"<b>{label}</b><br>" +
+            f"<b>Giá trị:</b> {value:.2f}<br>" +
+            f"<b>Tỷ trọng:</b> {value/sum(values)*100:.1f}%<br>" +
+            f"<b>💡 Nhận định:</b> {self.get_value_interpretation(indicator, percentiles[indicator])}"
+            for label, value, indicator in zip(labels, values, indicators)
+        ]
+        
+        fig = go.Figure(data=[go.Pie(
+            labels=labels,
+            values=values,
+            hole=0.4,
+            marker=dict(colors=colors),
+            textinfo='percent',
+            hovertext=hover_text,
+            hoverinfo='text'
+        )])
+
+        fig.update_layout(
+            title=dict(
+                text=f"Phân bố các chỉ số ({data['Year']}-{data['Month']})",
+                font=dict(size=20, color='#1e293b')
+            ),
+            hoverlabel=self.hover_style,
+            template="plotly_white",
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+                font=dict(size=12)
+            ),
+            margin=dict(t=60, l=40, r=40, b=40)
+        )
+        
+        return fig
+
+    def get_chart_explanation(self, chart_type):
+        """Get explanation for how to read a specific chart type"""
+        # Dictionary of chart explanations
+        chart_explanations = {
+            'Biểu đồ xu hướng': {
+                'title': 'Biểu đồ xu hướng theo thời gian',
+                'description': 'Hiển thị sự biến động của các chỉ số theo thời gian, giúp nhận diện xu hướng và chu kỳ.',
+                'usage': 'Phù hợp để theo dõi xu hướng dài hạn và so sánh biến động giữa các chỉ số.',
+                'reading_guide': [
+                    'Độ dốc của đường biểu thị tốc độ thay đổi (càng dốc = thay đổi càng nhanh)',
+                    'Điểm đỉnh và đáy giúp xác định các giai đoạn biến động mạnh',
+                    'Đường càng dao động = độ biến động cao, đường ít dao động = ổn định',
+                    'Dấu sao (★) đánh dấu những điểm biến động mạnh > 5% so với kỳ trước',
+                    'Vùng nền màu thể hiện các giai đoạn lịch sử quan trọng ảnh hưởng đến chỉ số'
+                ],
+                'icon': '📈',
+                'examples': ['Phân tích xu hướng lạm phát', 'So sánh tăng trưởng GDP', 'Biến động tỷ giá']
+            },
+            'Biểu đồ phân tán': {
+                'title': 'Biểu đồ tương quan',
+                'description': 'Thể hiện mối quan hệ giữa hai chỉ số, với màu sắc thể hiện thời gian.',
+                'usage': 'Dùng để phân tích mối quan hệ và phát hiện các điểm bất thường.',
+                'reading_guide': [
+                    'Các điểm nằm dọc theo đường chéo từ dưới-trái lên trên-phải: tương quan dương (cùng tăng/giảm)',
+                    'Các điểm nằm dọc theo đường chéo từ trên-trái xuống dưới-phải: tương quan âm (một tăng, một giảm)',
+                    'Điểm nằm xa xu hướng chung: điểm bất thường, cần chú ý',
+                    'Màu sắc cho biết thời gian, giúp theo dõi sự thay đổi của mối quan hệ theo thời gian',
+                    'Sự phân tán của điểm cho biết độ mạnh của mối tương quan (càng gần = tương quan càng mạnh)'
+                ],
+                'icon': '🔍',
+                'examples': ['Quan hệ giữa lạm phát và lãi suất', 'Tương quan xuất nhập khẩu', 'Ảnh hưởng của giá dầu']
+            },
+            'Bản đồ nhiệt thời gian': {
+                'title': 'Bản đồ nhiệt theo tháng và năm',
+                'description': 'Hiển thị cường độ của chỉ số theo màu sắc, phân chia theo tháng và năm.',
+                'usage': 'Phù hợp để phân tích mẫu hình theo mùa và xu hướng dài hạn.',
+                'reading_guide': [
+                    'Màu đỏ thể hiện giá trị cao, màu xanh thể hiện giá trị thấp',
+                    'Nhìn theo hàng ngang (mỗi năm): xác định chu kỳ theo mùa',
+                    'Nhìn theo cột dọc (cùng tháng qua các năm): xác định xu hướng dài hạn',
+                    'Dấu sao (★) đánh dấu các sự kiện lịch sử đặc biệt ảnh hưởng đến chỉ số',
+                    'So sánh các ô cùng màu để tìm mẫu hình lặp lại theo mùa hoặc chu kỳ kinh tế'
+                ],
+                'icon': '🔥',
+                'examples': ['Phân tích theo mùa vụ', 'Chu kỳ kinh tế', 'Biến động nhiệt độ lạm phát']
+            },
+            'Biểu đồ mùa vụ': {
+                'title': 'Biểu đồ biến động theo mùa',
+                'description': 'Phân tích sự biến động của chỉ số theo từng tháng trong năm.',
+                'usage': 'Xác định mẫu hình mùa vụ, tháng cao điểm và thấp điểm.',
+                'reading_guide': [
+                    'Đường chính thể hiện giá trị trung bình của chỉ số theo từng tháng',
+                    'Vùng màu xám thể hiện độ biến thiên (độ lệch chuẩn) của giá trị',
+                    'Dấu sao màu đỏ (★) đánh dấu tháng có giá trị cao bất thường (cao điểm theo mùa)',
+                    'Dấu sao màu xanh (★) đánh dấu tháng có giá trị thấp bất thường (thấp điểm theo mùa)',
+                    'Vùng có độ biến thiên rộng: chỉ số có độ dao động lớn trong tháng đó qua các năm'
+                ],
+                'icon': '🌡️',
+                'examples': ['Phân tích CPI theo mùa', 'Chu kỳ sản xuất', 'Xu hướng tiêu dùng']
+            },
+            'Ma trận tương quan': {
+                'title': 'Ma trận tương quan giữa các chỉ số',
+                'description': 'Hiển thị mức độ tương quan giữa tất cả các chỉ số được chọn.',
+                'usage': 'Phù hợp để xác định nhanh mối liên hệ giữa nhiều chỉ số cùng lúc.',
+                'reading_guide': [
+                    'Màu xanh thể hiện tương quan dương (cùng tăng/giảm), màu đỏ thể hiện tương quan âm (một tăng, một giảm)',
+                    'Độ đậm của màu thể hiện độ mạnh của tương quan (càng đậm = liên hệ càng mạnh)',
+                    'Các ô theo đường chéo chính luôn có giá trị 1 (tương quan hoàn hảo với chính nó)',
+                    'Hệ số gần 0 (màu nhạt): hai chỉ số ít hoặc không liên quan đến nhau',
+                    'Hệ số gần 1 hoặc -1 (màu đậm): hai chỉ số có mối liên hệ chặt chẽ'
+                ],
+                'icon': '🔄',
+                'examples': ['Tương quan vĩ mô', 'Mối liên hệ thị trường', 'Quan hệ đa biến']
+            },
+            'Biểu đồ xu hướng chi tiết': {
+                'title': 'Phân tích xu hướng của chỉ số',
+                'description': 'Phân tích chi tiết xu hướng của chỉ số với đường trung bình di động.',
+                'usage': 'Loại bỏ nhiễu ngắn hạn để xem xu hướng dài hạn rõ ràng hơn.',
+                'reading_guide': [
+                    'Đường màu chính thể hiện giá trị thực của chỉ số',
+                    'Đường đứt khúc là đường trung bình di động (MA), làm mịn dao động ngắn hạn',
+                    'Khi đường giá trị cắt lên trên đường MA: tín hiệu xu hướng tăng',
+                    'Khi đường giá trị cắt xuống dưới đường MA: tín hiệu xu hướng giảm',
+                    'Dấu chấm xanh/đỏ thể hiện điểm bắt đầu của xu hướng tăng/giảm'
+                ],
+                'icon': '📊',
+                'examples': ['Phân tích xu hướng lạm phát', 'Đánh giá chu kỳ', 'Dự báo kinh tế']
+            },
+            'Biểu đồ cột': {
+                'title': 'Biểu đồ cột so sánh các chỉ số',
+                'description': 'So sánh giá trị của các chỉ số theo thời gian hoặc nhóm.',
+                'usage': 'Phù hợp để so sánh giá trị rời rạc giữa các biến số khác nhau.',
+                'reading_guide': [
+                    'Chiều cao của cột thể hiện giá trị của chỉ số tại thời điểm đó',
+                    'So sánh các cột cùng màu để thấy biến động của một chỉ số theo thời gian',
+                    'So sánh các cột khác màu tại cùng thời điểm để so sánh các chỉ số với nhau',
+                    'Những cột cao bất thường cho thấy các giai đoạn tăng trưởng mạnh hoặc suy giảm',
+                    'Khoảng cách đều đặn giữa các cột liên tiếp thể hiện chu kỳ ổn định'
+                ],
+                'icon': '📊',
+                'examples': ['So sánh tăng trưởng', 'Phân tích GDP', 'Đối chiếu lạm phát']
+            },
+            'Biểu đồ cột ghép': {
+                'title': 'Biểu đồ cột ghép',
+                'description': 'Biểu đồ cột ghép hiển thị giá trị các chỉ số xếp chồng lên nhau, giúp so sánh đồng thời tổng giá trị và tỷ trọng từng thành phần.',
+                'usage': 'Phù hợp để phân tích cấu trúc và đóng góp của các chỉ số vào tổng thể; so sánh cả giá trị tổng và từng phần.',
+                'reading_guide': [
+                    'Mỗi cột thể hiện tổng giá trị của tất cả chỉ số tại một thời điểm, với các phần được tô màu khác nhau cho từng chỉ số',
+                    'Chiều cao của mỗi phần thể hiện giá trị tuyệt đối của chỉ số tương ứng',
+                    'So sánh tỷ trọng (%) của mỗi chỉ số trong tổng thể qua các thời điểm khác nhau',
+                    'Khi rê chuột qua từng phần, bạn sẽ thấy thông tin chi tiết về giá trị và tỷ trọng',
+                    'Quan sát sự thay đổi về cấu trúc của các chỉ số theo thời gian để phát hiện xu hướng'
+                ],
+                'icon': '📊',
+                'examples': ['So sánh cấu trúc xuất nhập khẩu', 'Phân tích cơ cấu lạm phát', 'So sánh đóng góp vào tổng thể']
+            },
+            'Biểu đồ hộp': {
+                'title': 'Biểu đồ hộp phân tích phân phối',
+                'description': 'Hiển thị phân phối thống kê của các chỉ số kinh tế.',
+                'usage': 'Phù hợp để phân tích độ biến động và phát hiện giá trị bất thường.',
+                'reading_guide': [
+                    'Đường ngang giữa hộp: giá trị trung vị (50% số quan sát)',
+                    'Viền dưới và trên của hộp: tứ phân vị thứ nhất (25%) và thứ ba (75%)',
+                    'Các "râu" kéo dài: phạm vi bình thường của dữ liệu (1.5 x khoảng tứ phân vị)',
+                    'Điểm nằm ngoài "râu": giá trị bất thường (outliers), cần chú ý đặc biệt',
+                    'Hộp càng cao: độ phân tán dữ liệu càng lớn, hộp thấp: dữ liệu tập trung'
+                ],
+                'icon': '📦',
+                'examples': ['Phân tích biến động', 'Phát hiện giá trị đột biến', 'So sánh phân phối']
+            },
+            'Biểu đồ histogram': {
+                'title': 'Biểu đồ phân phối tần suất',
+                'description': 'Hiển thị tần suất xuất hiện của các khoảng giá trị trong chỉ số.',
+                'usage': 'Phù hợp để hiểu phân phối và mô hình thống kê của dữ liệu.',
+                'reading_guide': [
+                    'Trục X: các khoảng giá trị của chỉ số, trục Y: tần suất xuất hiện',
+                    'Đỉnh của histogram: giá trị phổ biến nhất của chỉ số',
+                    'Đường cong đỏ (KDE): ước tính phân phối xác suất liên tục của dữ liệu',
+                    'Histogram lệch phải: nhiều giá trị cao bất thường, lệch trái: nhiều giá trị thấp bất thường',
+                    'Histogram có nhiều đỉnh: dữ liệu có thể thuộc về nhiều chu kỳ hoặc thời kỳ khác nhau'
+                ],
+                'icon': '📊',
+                'examples': ['Phân tích phân phối lạm phát', 'Tần suất biến động', 'Mô hình phân phối']
+            },
+            'Biểu đồ vùng': {
+                'title': 'Biểu đồ vùng tích lũy',
+                'description': 'Hiển thị xu hướng của các chỉ số theo thời gian với diện tích tô màu.',
+                'usage': 'Phù hợp để theo dõi xu hướng và đóng góp tương đối của các thành phần.',
+                'reading_guide': [
+                    'Trục X: thời gian, trục Y: giá trị tích lũy của các chỉ số',
+                    'Diện tích màu thể hiện giá trị hoặc tỷ trọng đóng góp của từng chỉ số',
+                    'Vùng trên cùng thể hiện tổng giá trị của tất cả các chỉ số theo thời gian',
+                    'Mở rộng vùng theo chiều dọc: đóng góp của chỉ số tăng lên',
+                    'Thu hẹp vùng theo chiều dọc: đóng góp của chỉ số giảm xuống'
+                ],
+                'icon': '🗺️',
+                'examples': ['Phân tích cơ cấu GDP', 'Thay đổi đóng góp theo thời gian', 'Xu hướng tổng hợp']
+            },
+            'Biểu đồ radar': {
+                'title': 'Biểu đồ radar so sánh nhiều chỉ số',
+                'description': 'Hiển thị giá trị chuẩn hóa của nhiều chỉ số trên các trục tỏa ra từ tâm.',
+                'usage': 'Phù hợp để so sánh toàn diện nhiều chỉ số cùng lúc.',
+                'reading_guide': [
+                    'Mỗi trục tỏa ra từ tâm thể hiện một chỉ số riêng biệt',
+                    'Giá trị gần tâm: thấp hơn, giá trị xa tâm: cao hơn (đã chuẩn hóa)',
+                    'Diện tích của đa giác thể hiện mức độ tổng thể của tất cả các chỉ số',
+                    'Biểu đồ cân đối (gần hình tròn): các chỉ số tương đối đồng đều',
+                    'Biểu đồ không cân đối: một số chỉ số nổi trội hơn các chỉ số khác'
+                ],
+                'icon': '📡',
+                'examples': ['So sánh đa chiều', 'Phân tích toàn diện', 'Đối chiếu nhiều biến']
+            },
+            'Biểu đồ bong bóng': {
+                'title': 'Biểu đồ bong bóng so sánh ba chiều',
+                'description': 'Hiển thị mối quan hệ giữa ba chỉ số: X, Y và kích thước bong bóng.',
+                'usage': 'Phù hợp để phân tích mối quan hệ phức tạp giữa ba biến.',
+                'reading_guide': [
+                    'Trục X và Y: hai chỉ số chính cần so sánh',
+                    'Kích thước bong bóng: chỉ số thứ ba, càng lớn = giá trị càng cao',
+                    'Màu sắc thể hiện thời gian, giúp theo dõi sự thay đổi theo thời gian',
+                    'Đường chấm đỏ thể hiện xu hướng tương quan giữa hai chỉ số trên trục X và Y',
+                    'Bong bóng di chuyển theo đường chéo: hai chỉ số X và Y có tương quan mạnh'
+                ],
+                'icon': '🫧',
+                'examples': ['Phân tích ba chiều', 'So sánh phức hợp', 'Mối quan hệ đa yếu tố']
+            },
+            'Biểu đồ dòng chảy': {
+                'title': 'Biểu đồ dòng chảy Sankey',
+                'description': 'Hiển thị dòng chảy và mối quan hệ giữa các nhóm chỉ số.',
+                'usage': 'Phù hợp để phân tích sự phân bổ và dòng chảy giữa các thành phần.',
+                'reading_guide': [
+                    'Độ rộng của mỗi dòng thể hiện lượng hoặc giá trị dòng chảy',
+                    'Các nút thể hiện các nhóm hoặc thành phần chính',
+                    'Màu sắc theo nút nguồn hoặc nút đích, giúp phân biệt các dòng chảy',
+                    'Dòng càng rộng: đóng góp hoặc mối liên hệ càng mạnh',
+                    'Di chuột qua mỗi dòng để xem chi tiết giá trị và mối liên hệ'
+                ],
+                'icon': '🌊',
+                'examples': ['Phân tích dòng tiền', 'Phân phối nguồn lực', 'Dòng chảy kinh tế']
+            },
+            'Biểu đồ bánh': {
+                'title': 'Biểu đồ tròn thể hiện tỷ lệ',
+                'description': 'Hiển thị tỷ lệ đóng góp của từng chỉ số vào tổng thể.',
+                'usage': 'Phù hợp để so sánh tỷ trọng của các thành phần trong một tổng thể.',
+                'reading_guide': [
+                    'Mỗi phần của bánh thể hiện tỷ lệ phần trăm của một chỉ số',
+                    'Tổng của tất cả các phần luôn bằng 100%',
+                    'Phần lớn nhất thể hiện chỉ số đóng góp nhiều nhất',
+                    'Tránh sử dụng biểu đồ này khi có quá nhiều chỉ số (gây khó đọc)',
+                    'Di chuột qua mỗi phần để xem chi tiết giá trị và phần trăm'
+                ],
+                'icon': '🥧',
+                'examples': ['Cơ cấu GDP', 'Phân bổ dân số', 'Tỷ trọng đóng góp']
+            }
+        }
+        
+        # If chart type is not found, return generic explanation
+        if chart_type not in chart_explanations:
+            return {
+                "title": chart_type,
+                "description": "Công cụ phân tích dữ liệu trực quan.",
+                "usage": "Giúp hiểu rõ hơn về dữ liệu kinh tế theo thời gian.",
+                "reading_guide": [
+                    "Đọc tiêu đề và trục để hiểu thông tin được thể hiện",
+                    "Chú ý đến xu hướng và điểm đột biến",
+                    "So sánh giá trị giữa các chỉ số hoặc thời điểm khác nhau",
+                    "Dùng tính năng tương tác (hover, zoom) để xem chi tiết"
+                ],
+                "icon": "📈"
+            }
+        
+        return chart_explanations[chart_type]
+
+    def create_box_plot(self, indicators):
+        """Create a box plot for the selected indicators
+
+        Args:
+            indicators (list): List of indicator names to visualize
+
+        Returns:
+            plotly.graph_objects.Figure: A box plot showing the distribution of each indicator
+        """
+        if not indicators or len(indicators) == 0:
+            return None
+        
+        # Get data from data handler
+        data = self.data_handler.data.copy()
+        
+        # Create figure
+        fig = go.Figure()
+        
+        for indicator in indicators:
+            # Skip if indicator not in data
+            if indicator not in data.columns:
+                continue
+            
+            # Get the visible name for the indicator
+            indicator_name = self.indicator_names.get(indicator, indicator)
+            
+            # Add box plot for this indicator
+            fig.add_trace(go.Box(
+                y=data[indicator],
+                name=indicator_name,
+                marker_color=self.color_scheme.get(indicator, self.fallback_colors[0]),
+                boxmean=True,  # Show mean and standard deviation
+                boxpoints='suspectedoutliers'  # Only show outlier points
+            ))
+        
+        # Update layout
+        fig.update_layout(
+            title="Phân phối của các chỉ số kinh tế",
+            height=600,
+            template="plotly_white",
+            hoverlabel=self.hover_style,
+            xaxis_title="Chỉ số",
+            yaxis_title="Giá trị (chuẩn hóa)",
+            legend_title="Chỉ số kinh tế",
+            font=dict(family="Roboto, sans-serif", size=12),
+            margin=dict(l=40, r=40, t=60, b=40),
+        )
+        
+        return fig
+
+    def create_histogram(self, indicator):
+        """Create a histogram for the selected indicator
+        
+        Args:
+            indicator (str): Indicator name to visualize
+            
+        Returns:
+            plotly.graph_objects.Figure: A histogram showing the distribution of the indicator
+        """
+        if not indicator:
+            return None
+        
+        # Get data from data handler
+        data = self.data_handler.data.copy()
+        
+        # Skip if indicator not in data
+        if indicator not in data.columns:
+            return None
+        
+        # Get the visible name for the indicator
+        indicator_name = self.indicator_names.get(indicator, indicator)
+        
+        # Create figure with histogram
+        fig = go.Figure(data=[go.Histogram(
+            x=data[indicator],
+            marker_color=self.color_scheme.get(indicator, self.fallback_colors[0]),
+            nbinsx=30,
+            opacity=0.75,
+            name=indicator_name,
+            histnorm='probability'
+        )])
+        
+        # Add KDE curve
+        if len(data[indicator]) > 5:  # Need enough data points for KDE
+            kde_x = np.linspace(data[indicator].min(), data[indicator].max(), 1000)
+            kde = stats.gaussian_kde(data[indicator].dropna())
+            kde_y = kde(kde_x)
+            
+            fig.add_trace(go.Scatter(
+                x=kde_x,
+                y=kde_y,
+                mode='lines',
+                name='Đường KDE',
+                line=dict(color='red', width=2)
+            ))
+        
+        # Update layout
+        fig.update_layout(
+            title=f"Phân phối của {indicator_name}",
+            height=500,
+            template="plotly_white",
+            hoverlabel=self.hover_style,
+            xaxis_title=indicator_name,
+            yaxis_title="Tần suất",
+            bargap=0.05,
+            font=dict(family="Roboto, sans-serif", size=12),
+            margin=dict(l=40, r=40, t=60, b=40),
+        )
+        
+        return fig
+
+    def create_area_chart(self, indicators):
+        """Create an area chart for the selected indicators
+        
+        Args:
+            indicators (list): List of indicator names to visualize
+            
+        Returns:
+            plotly.graph_objects.Figure: An area chart showing the trend of each indicator
+        """
+        if not indicators or len(indicators) == 0:
+            return None
+        
+        # Get data from data handler
+        data = self.data_handler.data.copy()
+        
+        # Create date column for better x-axis display
+        data['Date'] = data.apply(lambda row: f"{int(row['Year'])}-{int(row['Month']):02d}", axis=1)
+        
+        # Create figure
+        fig = go.Figure()
+        
+        for i, indicator in enumerate(indicators):
+            # Skip if indicator not in data
+            if indicator not in data.columns:
+                continue
+            
+            # Get the visible name for the indicator
+            indicator_name = self.indicator_names.get(indicator, indicator)
+            
+            # Add area trace for this indicator
+            fig.add_trace(go.Scatter(
+                x=data['Date'],
+                y=data[indicator],
+                mode='lines',
+                name=indicator_name,
+                fill='tozeroy' if i == 0 else 'tonexty',
+                line=dict(width=0.5, color=self.color_scheme.get(indicator, self.fallback_colors[i % len(self.fallback_colors)])),
+                fillcolor=self.color_scheme.get(indicator, self.fallback_colors[i % len(self.fallback_colors)]) + '50',  # 50% transparency
+                stackgroup='one'  # For stacked area chart
+            ))
+        
+        # Update layout
+        fig.update_layout(
+            title="Biểu đồ vùng của các chỉ số kinh tế",
+            height=600,
+            template="plotly_white",
+            hoverlabel=self.hover_style,
+            xaxis_title="Thời gian",
+            yaxis_title="Giá trị (chuẩn hóa)",
+            legend_title="Chỉ số kinh tế",
+            font=dict(family="Roboto, sans-serif", size=12),
+            margin=dict(l=40, r=40, t=60, b=40),
+        )
+        
+        # Add important historical events as annotations
+        for date, event_info in self.historical_annotations.items():
+            year, month = map(int, date.split('-'))
+            date_str = f"{year}-{month:02d}"
+            
+            if date_str in data['Date'].values:
+                fig.add_annotation(
+                    x=date_str,
+                    y=1,
+                    text=event_info['event'],
+                    showarrow=True,
+                    arrowhead=2,
+                    arrowsize=1,
+                    arrowwidth=2,
+                    ax=0,
+                    ay=-40,
+                    bgcolor="rgba(255, 255, 255, 0.8)",
+                    bordercolor="#c7c7c7",
+                    font=dict(size=10)
+                )
+        
+        return fig
+
+    def create_radar_chart(self, indicators):
+        """Create a radar chart for the selected indicators
+        
+        Args:
+            indicators (list): List of indicator names to visualize
+            
+        Returns:
+            plotly.graph_objects.Figure: A radar chart comparing indicators
+        """
+        if not indicators or len(indicators) < 3:
+            return None
+        
+        # Get data from data handler
+        data = self.data_handler.data.copy()
+        
+        # Get most recent data
+        latest_data = data.iloc[-1]
+        
+        # Get min and max values for normalization
+        min_values = data[indicators].min()
+        max_values = data[indicators].max()
+        
+        # Normalize data to 0-1 scale
+        normalized_values = [(latest_data[indicator] - min_values[indicator]) / 
+                             (max_values[indicator] - min_values[indicator]) 
+                             for indicator in indicators]
+        
+        # Get indicator names for display
+        indicator_names = [self.indicator_names.get(indicator, indicator) for indicator in indicators]
+        
+        # Add first value again to close the polygon
+        indicator_names.append(indicator_names[0])
+        normalized_values.append(normalized_values[0])
+        
+        # Create figure
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatterpolar(
+            r=normalized_values,
+            theta=indicator_names,
+            fill='toself',
+            name='Giá trị hiện tại',
+            line_color='rgba(59, 130, 246, 0.8)',
+            fillcolor='rgba(59, 130, 246, 0.2)'
+        ))
+        
+        # Update layout
+        fig.update_layout(
+            title="Biểu đồ radar của các chỉ số kinh tế hiện tại",
+            height=600,
+            template="plotly_white",
+            hoverlabel=self.hover_style,
+            polar=dict(
+                radialaxis=dict(
+                    visible=True,
+                    range=[0, 1]
+                )
+            ),
+            showlegend=False,
+            font=dict(family="Roboto, sans-serif", size=12),
+            margin=dict(l=40, r=40, t=60, b=40),
+        )
+        
+        return fig
+
+    def create_bubble_chart(self, indicators):
+        """Create a bubble chart for the selected indicators
+        
+        Args:
+            indicators (list): List of 3 indicator names to visualize (x, y, and size)
+            
+        Returns:
+            plotly.graph_objects.Figure: A bubble chart comparing three indicators
+        """
+        if not indicators or len(indicators) != 3:
+            return None
+        
+        # Get data from data handler
+        data = self.data_handler.data.copy()
+        
+        # Create date column for better display
+        data['Date'] = data.apply(lambda row: f"{int(row['Year'])}-{int(row['Month']):02d}", axis=1)
+        
+        # Assign indicators
+        x_indicator = indicators[0]
+        y_indicator = indicators[1]
+        size_indicator = indicators[2]
+        
+        # Skip if any indicator not in data
+        if not all(indicator in data.columns for indicator in indicators):
+            return None
+        
+        # Get indicator names for display
+        x_name = self.indicator_names.get(x_indicator, x_indicator)
+        y_name = self.indicator_names.get(y_indicator, y_indicator)
+        size_name = self.indicator_names.get(size_indicator, size_indicator)
+        
+        # Normalize size indicator for better visualization
+        size_values = data[size_indicator]
+        size_min, size_max = size_values.min(), size_values.max()
+        normalized_size = ((size_values - size_min) / (size_max - size_min) * 30) + 5  # Scale to 5-35
+        
+        # Create figure
+        fig = go.Figure()
+        
+        # Create colormap based on time
+        color_scale = px.colors.sequential.Plasma
+        
+        fig.add_trace(go.Scatter(
+            x=data[x_indicator],
+            y=data[y_indicator],
+            mode='markers',
+            marker=dict(
+                size=normalized_size,
+                color=list(range(len(data))),  # Color by time (index)
+                colorscale=color_scale,
+                colorbar=dict(title="Thời gian"),
+                showscale=True,
+                line=dict(width=1, color='white')
+            ),
+            text=data['Date'],
+            hovertemplate=
+            f'<b>%{{text}}</b><br>' +
+            f'{x_name}: %{{x:.2f}}<br>' +
+            f'{y_name}: %{{y:.2f}}<br>' +
+            f'{size_name}: %{{marker.size:.2f}}<extra></extra>',
+        ))
+        
+        # Update layout
+        fig.update_layout(
+            title=f"Biểu đồ bong bóng: {x_name} vs {y_name} (kích thước: {size_name})",
+            height=600,
+            template="plotly_white",
+            hoverlabel=self.hover_style,
+            xaxis_title=x_name,
+            yaxis_title=y_name,
+            font=dict(family="Roboto, sans-serif", size=12),
+            margin=dict(l=40, r=40, t=60, b=40),
+        )
+        
+        # Add a trend line
+        if len(data) > 3:
+            try:
+                x_values = data[x_indicator]
+                y_values = data[y_indicator]
+                
+                # Calculate trend line
+                z = np.polyfit(x_values, y_values, 1)
+                p = np.poly1d(z)
+                
+                # Add trend line to the plot
+                x_range = np.linspace(x_values.min(), x_values.max(), 100)
+                fig.add_trace(go.Scatter(
+                    x=x_range,
+                    y=p(x_range),
+                    mode='lines',
+                    name=f'Xu hướng: y = {z[0]:.2f}x + {z[1]:.2f}',
+                    line=dict(color='rgba(255, 0, 0, 0.7)', width=2, dash='dash')
+                ))
+            except:
+                # Skip trend line if there's an error
+                pass
+        
+        return fig
+
+    def create_stacked_bar_chart(self, indicators):
+        """Create stacked bar chart for selected indicators"""
+        if not indicators or len(indicators) < 2:
+            return None
+
+        df = self.data_handler.filter_data(indicators=indicators)
+        df['Time'] = df['Year'].astype(str) + '-' + df['Month'].astype(str).str.zfill(2)
+        
+        # Sắp xếp lại dữ liệu theo thời gian nếu có nhiều điểm
+        if len(df) > 12:
+            # Lấy 12 điểm thời gian gần nhất hoặc giữ khoảng đều
+            step = max(1, len(df) // 12)
+            df = df.iloc[::step].reset_index(drop=True)
+        
+        fig = go.Figure()
+        
+        # Màu rõ ràng hơn theo loại chỉ số
+        indicator_colors = {
+            'Core_Inlation': '#E53935',      # Đỏ đậm
+            'Food_Inflation': '#FB8C00',     # Cam đậm
+            'MonthlyCPI': '#D32F2F',         # Đỏ tươi
+            'China_CPI': '#FF7043',          # Cam tươi
+            
+            'Export': '#1976D2',             # Xanh dương đậm
+            'Import': '#43A047',             # Xanh lá đậm
+            'VN_Trade_Balance': '#0288D1',   # Xanh dương tươi
+            'USD_VND': '#66BB6A',            # Xanh lá tươi
+            
+            'Brent': '#7B1FA2',              # Tím đậm
+            'Gold': '#FFD600',               # Vàng đậm
+            'VN_Gasoline_Prices': '#673AB7', # Tím tươi
+            'VN_rice_price': '#FFA000',      # Vàng cam
+            'VN_coffee,tea,mate,spices': '#9575CD', # Tím nhạt
+            
+            'Industrial_products': '#F57C00', # Cam đậm
+            'Agriculture, Forestry and Fishing': '#689F38', # Xanh lá-olive
+            'Unemployment Rate': '#D84315',  # Cam-đỏ
+            'VN_fiscal_deficit': '#C2185B',  # Hồng đậm
+            'VN_Interest_Rate': '#00796B',   # Xanh ngọc đậm
+            'VN_money_supply': '#4527A0'     # Tím-xanh
+        }
+        
+        # Fallback màu nếu không có trong bảng
+        vibrant_colors = ['#FF5733', '#33A8FF', '#33FF57', '#FF33A8', '#A833FF', '#FFCE33', '#33FFE0', '#E033FF']
+        
+        # Thêm từng chỉ số như một lớp của biểu đồ cột ghép
+        for i, indicator in enumerate(indicators):
+            # Lấy thông tin giải thích cho chỉ số
+            explanation = self.get_indicator_explanation(indicator)
+            
+            # Lấy màu tùy chỉnh cho chỉ số hoặc dùng màu mặc định
+            color = indicator_colors.get(indicator, vibrant_colors[i % len(vibrant_colors)])
+            
+            # Tạo tooltip tùy chỉnh cho từng cột
+            hover_data = []
+            for idx, row in df.iterrows():
+                value = row[indicator]
+                
+                # Tìm nhận xét dựa trên giá trị so với ngưỡng
+                level, comment = self._get_value_assessment(indicator, value, explanation)
+                
+                # Tính phần trăm đóng góp vào tổng (nếu có ý nghĩa)
+                total = sum(row[ind] for ind in indicators if row[ind] > 0)
+                percentage = (value / total * 100) if total > 0 and value > 0 else 0
+                
+                hover_text = f"""
+                <b>{self.indicator_names.get(indicator, indicator)}</b><br>
+                Thời gian: {row['Time']}<br>
+                Giá trị: {value:.2f}<br>
+                Tỷ trọng: {percentage:.1f}%<br>
+                Nhận xét: <b>{comment}</b>
+                """
+                hover_data.append(hover_text)
+            
+            fig.add_trace(go.Bar(
+                x=df['Time'],
+                y=df[indicator],
+                name=self.indicator_names.get(indicator, indicator),
+                marker=dict(
+                    color=color,
+                    line=dict(color='white', width=0.5)  # Viền trắng giữa các phần
+                ),
+                hovertemplate="%{customdata}<extra></extra>",
+                customdata=hover_data,
+                opacity=0.9
+            ))
+        
+        # Tính toán chiều cao khung biểu đồ
+        chart_height = max(600, 400 + 50 * len(indicators))
+        
+        # Tạo tiêu đề mô tả các chỉ số được ghép
+        if len(indicators) <= 3:
+            title_text = f"So sánh cấu trúc {', '.join([self.indicator_names.get(ind, ind) for ind in indicators])} theo thời gian"
+        else:
+            title_text = f"So sánh cấu trúc các chỉ số kinh tế theo thời gian ({len(indicators)} chỉ số)"
+        
+        fig.update_layout(
+            title=dict(
+                text=title_text,
+                font=dict(size=20, color='#1e293b'),
+                x=0.5,
+                xanchor='center'
+            ),
+            xaxis=dict(
+                title="Thời gian",
+                tickangle=-45,
+                tickfont=dict(size=10)
+            ),
+            yaxis=dict(
+                title="Giá trị",
+                gridcolor='rgba(230, 230, 230, 0.8)'
+            ),
+            barmode='stack',  # Chế độ cột ghép
+            template="plotly_white",
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="center",
+                x=0.5,
+                bgcolor='rgba(255, 255, 255, 0.8)',
+                bordercolor='rgba(211, 211, 211, 0.8)',
+                borderwidth=1
+            ),
+            plot_bgcolor='white',
+            height=chart_height,
+            margin=dict(l=80, r=80, t=100, b=100),
+            hoverlabel=dict(
+                bgcolor="white",
+                font_size=12,
+                font_family="Arial"
+            )
+        )
+        
+        # Thêm đường lưới ngang để dễ đọc giá trị
+        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(200, 200, 200, 0.3)')
+        
+        return fig
+        
+    def _get_value_assessment(self, indicator, value, explanation=None):
+        """Hàm hỗ trợ để phân tích và đưa ra nhận xét về giá trị chỉ số"""
+        if explanation is None:
+            explanation = self.get_indicator_explanation(indicator)
+            
+        level = "N/A"
+        comment = "Không có dữ liệu để đánh giá"
+        
+        if 'threshold' in explanation:
+            threshold = explanation['threshold']
+            
+            # Trích xuất ngưỡng từ văn bản
+            try:
+                high_text = threshold.get('high', '')
+                medium_text = threshold.get('medium', '')
+                low_text = threshold.get('low', '')
+                
+                # Xử lý ngưỡng cao
+                high_threshold = None
+                if high_text and ">" in high_text:
+                    high_match = high_text.split('>')[1].split(':')[0].strip()
+                    high_value = float(high_match.replace('%', '').replace('GDP', '').strip())
+                    high_threshold = high_value
+                
+                # Xử lý ngưỡng trung bình
+                medium_threshold_low, medium_threshold_high = None, None
+                if medium_text and "-" in medium_text:
+                    medium_parts = medium_text.split('-')
+                    medium_low = float(medium_parts[0].replace('%', '').replace('GDP', '').strip())
+                    medium_high_text = medium_parts[1].split(':')[0].strip()
+                    medium_high = float(medium_high_text.replace('%', '').replace('GDP', '').strip())
+                    medium_threshold_low, medium_threshold_high = medium_low, medium_high
+                
+                # Xử lý ngưỡng thấp
+                low_threshold = None
+                if low_text and "<" in low_text:
+                    low_match = low_text.split('<')[1].split(':')[0].strip()
+                    low_value = float(low_match.replace('%', '').replace('GDP', '').strip())
+                    low_threshold = low_value
+                
+                # Xác định mức độ dựa trên ngưỡng
+                if isinstance(value, (int, float)):
+                    if high_threshold is not None and value > high_threshold:
+                        level = "Cao"
+                        comment = high_text.split(':')[1].strip() if ':' in high_text else "Giá trị cao"
+                    elif low_threshold is not None and value < low_threshold:
+                        level = "Thấp"
+                        comment = low_text.split(':')[1].strip() if ':' in low_text else "Giá trị thấp"
+                    elif medium_threshold_low is not None and medium_threshold_high is not None and medium_threshold_low <= value <= medium_threshold_high:
+                        level = "Trung bình"
+                        comment = medium_text.split(':')[1].strip() if ':' in medium_text else "Giá trị trung bình"
+                    else:
+                        level = "N/A"
+                        comment = "Không thuộc các ngưỡng đã định nghĩa"
+            except:
+                # Sử dụng phân loại đơn giản hơn nếu có lỗi
+                # Các logic phân loại mặc định...
+                pass
+                
+        return level, comment
+
+# Initialize global visualization handler
+viz_handler = VisualizationHandler() 
+viz_handler = VisualizationHandler() 
